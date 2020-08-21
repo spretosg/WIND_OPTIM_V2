@@ -1,23 +1,426 @@
 ---
-title: "1_WP"
+title: "Wind optim CH WP 1"
 author: "R.Spielhofer"
-date: "20 August 2020"
-output: html_document
+date: "March - April 2020"
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(mapview)
+install.packages("stars")
+install.packages("mapv")
+
+require(raster)
+require(rgdal)
+require(dplyr)
+require(ggplot2)
+require(sf)
+require(Hmisc)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+
+library(stars)
+
+rasterOptions(progress="T")#progress bar 
+opar <- par()
+cur_dat<-Sys.Date()
+
+##general coordinate system
+coord<-make_EPSG()
+coord<-coord %>%
+  filter(code == 21781)
+
+##POSTGIS DB connection for the files (localhost)
+con<- dbConnect("PostgreSQL", dbname = "sdb_publication3", host = "localhost", user = "postgres", password
+                        = "reto89LLSIMI")
+
+
+##POSTGIS DB connection for the files (ETH)
+#con<- dbConnect("PostgreSQL", dbname = "spreto", host = "localhost", user = "postgres", password
+                      #  = "GGanH4Jj9pos89")
 ```
 
-## R Markdown
+# Description of WP PEPP
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This workpackages describes the calculation of the spatial explicit PEPP "physical energy production potential". We consider the parameters for a Vestas V112-3.0 and a Vestas V90-2.0 wind turbine with a hub height of 120 and 100 meters above ground. The Vestas V112-3.0 has a rotor diameter of 112 meters, the V90-2.0 90 meters. Both wind turbines have a cut-on wind speed at 3 m/s and a cut-off at 25 m/s. In order to calculate the spatial explicit power we consider the airdensity (p), approximated with the altitude, the average weibul parameters A and k. We further consider the power curve of both turbines which is dependent on the wind speed.   
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## Topography and air density
 
-```{r cars}
-summary(cars)
+As a first step, the topographic elevation model of Switzerland (dem_200), with a cell size of 200 meters is imported. 
+```{r}
+
+dem_200<-raster("input_data/200_DEM.tif")
+dem_200<-projectRaster(dem_200, crs="+init=epsg:21781")
+
+
+crs(dem_200)
 ```
 
-## Including Plots
+
+Subsequently, the airdensity (p) is approximated with the following formula, where x represents the meters a s.l. from the DEM.
+```{r}
+airdens <- function(x) { 1.247015*exp(-0.000104*x) }
+
+```
+
+
+The new raster "airdensity_200" contains airdensity values for each raster cell.
+
+```{r}
+# transform the dem_200 into an approximate air density raster
+airdens_200 <- calc(dem_200, fun=airdens)
+crs(airdens_200)
+writeRaster(airdens_200,filename="intermediate_steps/1_wp/200_airdens",overwrite=T)
+
+```
+
+Altitude raster and corresponding air densities
+```{r pressure, echo=FALSE}
+par(mfrow=c(1,2))
+plot(dem_200,col = gray.colors(20, start = 0, end = 1), main="Altitude")
+plot(airdens_200,main="Air density")
+
+```
+
+## wind speed depending on hub heights
+To calculate the wind power in each raster cell we consider the spatial explicit weibull parameters A and k (provided by the wind data of meteotest). Both parameters are dependent from the height above ground (100,125 and 150m meters in our case).
+
+```{r}
+
+#A parameter of weibull distribution 150 meter wind speeds
+A150<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/wind/A_150.tif")
+
+#reproject and resoltion
+Aproj150_200 <- projectRaster(A150, crs = crs(dem_200), res = 200 )
+#resampling to adjust the extent
+A150_200<-resample(Aproj150_200, dem_200, method="bilinear")
+writeRaster(A150_200,filename=paste(outpath,"A150_200.tif",sep = "/"),overwrite=T)
+
+#k parameter of weibull distribution 125 meter wind speeds
+k150<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/wind/k_150.tif")
+
+#reproject and resoltion
+kproj150_200 <- projectRaster(k150, crs = crs(dem_200), res = 200 )
+#resampling to adjust the extent
+k150_200<-resample(kproj150_200, dem_200, method="bilinear")
+writeRaster(k150_200,filename=paste(outpath,"k150_200.tif",sep = "/"),overwrite=T)
+
+
+#A parameter of weibull distribution 125 meter wind speeds
+A125<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/wind/A_125.tif")
+
+#reproject and resoltion
+Aproj125_200 <- projectRaster(A125, crs = crs(dem_200), res = 200 )
+#resampling to adjust the extent
+A125_200<-resample(Aproj125_200, dem_200, method="bilinear")
+#writeRaster(A125_200,filename=paste(outpath,"A125_200.tif",sep = "/"),overwrite=T)
+
+#k parameter of weibull distribution 125 meter wind speeds
+k125<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/wind/k_125.tif")
+
+#reproject and resoltion
+kproj125_200 <- projectRaster(k125, crs = crs(dem_200), res = 200 )
+#resampling to adjust the extent
+k125_200<-resample(kproj125_200, dem_200, method="bilinear")
+#writeRaster(k125_200,filename=paste(outpath,"k125_200.tif",sep = "/"),overwrite=T)
+
+
+## and the same procedure for the 100m above ground
+A100<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/wind/A_100.tif")
+
+Aproj100_200 <- projectRaster(A100, crs = crs(dem_200), res = 200 )
+A100_200<-resample(Aproj100_200, dem_200, method="bilinear")
+#writeRaster(A100_200,filename=paste(outpath,"A100_200.tif",sep = "/"),overwrite=T)
+
+#k parameter of weibull distribution 100 meter wind speeds
+k100<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/wind/k_100.tif")
+
+#reproject and resoltion
+kproj100_200 <- projectRaster(k100, crs = crs(dem_200), res = 200 )
+#resampling to adjust the extent
+k100_200<-resample(kproj100_200, dem_200, method="bilinear")
+#writeRaster(k100_200,filename=paste(outpath,"k100_200.tif",sep = "/"),overwrite=T)
+```
+
+## cp 
+According to https://www.wind-turbine-models.com/turbines and thanks to philipp mattle from emch and berger, we extracted power efficiency values cp for Vestas V150-4.2 (150m hub height) E-138-3.5 (125m hub height) and E-82-2.0 (100m hub height) for each wind speed between 0 and 30 m/s.
+```{r}
+pow_curve<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/r_scripts/WP_1_PEPP/power_curves.csv")
+dbWriteTable(conn=con, value=pow_curve, name='power curve')
+```
+
+## Spatial explicit power calculation for wind turbines
+The funtions "tot" take the airdensity, the efficency parameter cp, the mean wind speed i and the two site specific weibull parameters A and k as inputs. In a loop between 0 and 30 all probabilities that the wind speeds will occur according to the specific weibull distribution is calculated and multiplied by the total amount of hours per year.
+
+```{r}
+
+#125 meters above ground with E138-4.2 power curve (67m radius) with an efficiency parameter of 0.8 (mail philipp 12.5.20)
+fun_totE138<-function(airdens_200,cpe138,i,k,A){0.8*(0.5*(airdens_200*(67^2*pi)*i^3)*cpe138)/1000*(k/A*((i/A)^(k-1))*exp(1)^(-(i/A)^(k)))*8760}
+
+WEA_pow_tot125<-reclassify(A125_200, c(-Inf,Inf,0))
+for(i in 1:29){
+  mean_wind<-reclassify(A125_200, c(-Inf,Inf,i))
+  cp1<-pow_curve$E.138_cp[i]
+  cpe138<-reclassify(A125_200, c(-Inf,Inf,cp1))
+  rSTACK<-stack(airdens_200,cpe138,mean_wind,k125_200,A125_200)
+  WEA_pow1 <-overlay(rSTACK, fun=fun_totE138, unstack=TRUE)
+  WEA_pow_tot125<-WEA_pow_tot125+WEA_pow1
+}
+
+#100 meters above ground with E82 2.0 power curve (39m radius) with an efficiency parameter of 0.8 (mail philipp 12.5.20)
+fun_totE82<-function(airdens_200,cpe82,i,k,A){0.8*(0.5*(airdens_200*(39^2*pi)*i^3)*cpe82)/1000*(k/A*((i/A)^(k-1))*exp(1)^(-(i/A)^(k)))*8760}
+
+WEA_pow_tot100<-reclassify(A100_200, c(-Inf,Inf,0))
+for(i in 1:29){
+  mean_wind<-reclassify(A100_200, c(-Inf,Inf,i))
+  cp<-pow_curve$E.82_cp[i]
+  cpe82<-reclassify(A100_200, c(-Inf,Inf,cp))
+  rSTACK<-stack(airdens_200,cpe82,mean_wind,k100_200,A100_200)
+  WEA_pow <-overlay(rSTACK, fun=fun_totE82, unstack=TRUE)
+  WEA_pow_tot100<-WEA_pow_tot100+WEA_pow
+}
+#rel_diff_PEPP<-(WEA_pow_tot100/WEA_pow_tot125)
+
+#150 meters above ground with V150-4.2 power curve (73m radius) with an efficiency parameter of 0.8 (mail philipp 12.5.20)
+fun_totV150<-function(airdens_200,cpV150,i,k,A){0.8*(0.5*(airdens_200*(73^2*pi)*i^3)*cpV150)/1000*(k/A*((i/A)^(k-1))*exp(1)^(-(i/A)^(k)))*8760}
+
+WEA_pow_tot150<-reclassify(A150_200, c(-Inf,Inf,0))
+for(i in 1:29){
+  mean_wind<-reclassify(A150_200, c(-Inf,Inf,i))
+  cp1<-pow_curve$V150_cp[i]
+  cpV150<-reclassify(A150_200, c(-Inf,Inf,cp1))
+  rSTACK<-stack(airdens_200,cpV150,mean_wind,k150_200,A150_200)
+  WEA_pow1 <-overlay(rSTACK, fun=fun_totV150, unstack=TRUE)
+  WEA_pow_tot150<-WEA_pow_tot150+WEA_pow1
+}
+
+
+
+par(mfrow=c(2,2))
+plot(WEA_pow_tot125/1000, main="PEPP for E138-4.2 [MWh]")
+plot(WEA_pow_tot100/1000,main="PEPP for E82-2.0[MWh]")
+plot(WEA_pow_tot150/1000, main="PEPP for V150-4.2 [MWh]")
+plot(WEA_pow_tot150/1000-WEA_pow_tot100/1000, main="DIFF V150-E138")
+#plot(rel_diff_PEPP,main="rel_dff_PEPP")
+
+
+writeRaster(WEA_pow_tot125/1000,filename=paste(outpath,paste(cur_dat,"ENERE138_200_MWH.tif",sep="_"),sep = "/"),overwrite=T)
+writeRaster(WEA_pow_tot100/1000,filename=paste(outpath,paste(cur_dat,"ENERE82_200MWH.tif",sep="_"),sep = "/"),overwrite=T)
+writeRaster(WEA_pow_tot150/1000,filename=paste(outpath,paste(cur_dat,"ENERV150_200MWH.tif",sep="_"),sep = "/"),overwrite=T)
+
+```
+For the total area of Switzerland, the V112-3.0 provides around 1500 TWh of physical potential energy. Including the Specific wind distribution, the height dependent air density and the turbine parameters. In 2012, meteotest assessed the physical wind energy potential for Switzerland for the BAFU (Cattin, 2012). They calculated about 4800 TWh of PEPP, but used an optimal rotor performance of 0.59. Our results are much closer to what a specific wind turbine can produce since we considered cp's according to the power curve between 0.2 and 0.4. 
+
+# Create a hexagonal grids
+For further analysis we need planning units (PU's) according to the dimensions of the wind Turbine. For Switzerland, Cattin, 2012 estimate the areas for a V112 to 0.36km2 and for the smaller V90 to 0.23km2. In order to represent the PU shape more naturally, we consider a hexagonal grid. For the E82 we calculate with a hex diameter of 500m, resulting in app. 6*the respective rotor diameter of 40m as a minimal distance to the next turbine. The same procedure for the E138 and V150.
+```{r}
+hex_center <- st_read("D:/04_PROJECTS/2001_WIND_OPTIM/in/hex_lscpe.shp")
+hex_center<-st_transform(hex_center, crs="+init=epsg:21781")
+st_write(hex_center, dsn = con, layer = "base hex egli",drop=T)
+
+#create hexagonal grids with the corresponding cellsizes (hexagon formula d2)
+###E138
+PU_E138<-st_make_grid(st_as_sfc(st_bbox(hex_center)), what = "polygons", cellsize = 700, square = FALSE, crs = "+init=epsg:21781")
+PU_E138<-st_as_sf(PU_E138)
+PU_E138$PU_ID<-c(1:nrow(PU_E138))
+hex_cenE138<-st_centroid(PU_E138)
+st_write(PU_E138, dsn = con, layer = "PU_E138", driver="ESRI Shapefile")
+
+
+### E82
+PU_E82<-st_make_grid(st_as_sfc(st_bbox(hex_center)), what = "polygons", cellsize = 500, square = FALSE, crs = "+init=epsg:21781")
+PU_E82<-st_as_sf(PU_E82)
+PU_E82$PU_ID<-c(1:nrow(PU_E82))
+hex_cenE82<-st_centroid(PU_E82)
+st_write(PU_E82, dsn = con, layer = "PU_E82", driver="ESRI Shapefile")
+
+####V150
+PU_V150<-st_make_grid(st_as_sfc(st_bbox(hex_center)), what = "polygons", cellsize = 900, square = FALSE, crs = "+init=epsg:21781")
+PU_V150<-st_as_sf(PU_V150)
+PU_V150$PU_ID<-c(1:nrow(PU_V150))
+hex_cenV150<-st_centroid(PU_V150)
+st_write(PU_V150, dsn = con, layer = "PU_V150")
+
+#import CH boundary to clip points
+boundary<-st_read(con,"CH_Grenze")
+boundary<-st_transform(boundary, crs="+init=epsg:21781")
+
+#crop points with boundary of CH
+hex_cenV150<-hex_cenV150[boundary,]
+
+#E82
+hex_cenE82<-hex_cenE82[boundary,]
+#E138
+hex_cenE138<-hex_cenE138[boundary,]
+
+```
+
+
+## ENERGYSCAPE landscape types
+The three different wind turbine models should be located in three specific regions. The largest V150 mainly in the flat areas (PLAT_URB, PLAT_AGRI) and in the flat, large inner alpine valleys (ALP_URB). The E138 will be placed in the Jura and in the PRE_ALPS. The smalles E82 in the touristic alpine regions, the alpine areas with and without infrastructure.
+```{r}
+
+#import CH boundary to clip points
+LT<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/BIOGEOGR_REG/LT3_rast1.tif")
+LT<-projectRaster(LT, crs="+init=epsg:21781")
+hex_cenV150$LT<-extract(LT,hex_cenV150)
+hex_cenE138$LT<-extract(LT,hex_cenE138)
+hex_cenE82$LT<-extract(LT,hex_cenE82)
+
+hex_cenV150$prod_MW<-extract(WEA_pow_tot150/1000,hex_cenV150, fun=mean, buffer= 450)
+hex_cenE138$prod_MW<-extract(WEA_pow_tot125/1000,hex_cenE138,fun=mean, buffer= 350)
+hex_cenE82$prod_MW<-extract(WEA_pow_tot100/1000,hex_cenE82,fun=mean, buffer= 250)
+#select only the appropriate sites for the WEA
+hex_cenV150_sel<-subset(hex_cenV150,LT==1,)
+hex_cenE82_sel<-subset(hex_cenE82,LT==2,)
+hex_cenE138_sel<-subset(hex_cenE138,LT==3,)
+
+st_write(hex_cenE138, dsn = con, layer = "CEN_all_E138", driver = "ESRI Shapefile")
+st_write(hex_cenE82, dsn = con, layer = "CEN_all_E82", driver = "ESRI Shapefile")
+st_write(hex_cenV150, dsn = con, layer = "CEN_all_V150", driver = "ESRI Shapefile")
+
+#combine
+cen_all<-rbind(hex_cenV150_sel,hex_cenE82_sel,hex_cenE138_sel)
+st_write(cen_all, dsn = con, layer = "CEN_all", driver = "ESRI Shapefile")
+
+```
+Interestingly, the selection based on LT produces some holes (not many) anyway, we therefore exported the hex_cenXY to arcmap and combined the layers there to one single layer cen_all
+
+# Hexagonal points from Egli et a., 2017
+
+ Hexagons with further informations (Egli et al. 2017)
+Egli et al., 2017 calculated in a hexagonal grid further site specific values. The goal of this section is to compare the MAX wind value from Egli et al., 2017 with our calculated PEPP. (LT-1 = Mittelland, Lt2= Alpen, LT3 = Voralpen )
+
+
+```{r}
+cen_all<-st_read(dsn = con, layer="all_cen")
+
+#extract raster values alti
+cen_all$alti<-extract(dem_200,hex_all)
+
+#extract raster values airdens
+cen_all$airdens<-extract(airdens_200,hex_all)
+
+#extract respective MW from rasters and assign other values
+
+for(i in 1:nrow(cen_all)){
+if(cen_all$lt[i]==1){
+  cen_all$WT_model[i]<-"V150_4.2"
+}
+  else if(cen_all$lt[i]==2){
+  cen_all$WT_model[i]<-"E82_2.0"
+}
+  else{
+  cen_all$WT_model[i]<-"E138_4.0"
+  }
+}
+
+st_write(cen_all,paste(outpath,paste(cur_dat,"CEN_all_fin.shp",sep="_"),sep = "/"),overwrite=T)
+st_write(cen_all, dsn = con, layer = "CEN_all_fin", driver = "ESRI Shapefile")
+```
+
+In the following we should check if our data and Egli et al., 2017 correlates. Additionally, we test if our PEPP is larger or smaller within 10% boundaries. in 800 cases Egli et al., 2017 estimate higher potential compared to our dataset. In 10000 cases our data is higher compared to Egli.
+
+```{r}
+plot(hex_center$MAX,hex_center$MEAN_V112)
+plot(hex_center$MAX,hex_center$MEAN_V90)
+a<-subset(hex_center, MAX >0 & MAX*1.1<MEAN_V112)
+plot(a$MAX,a$MEAN_V112)
+plot(a)
+
+b<-subset(hex_center, MAX >0 & MAX*0.9>MEAN_V112)
+plot(b)
+
+histogram(hex_center$MEAN_V112)
+histogram(as.numeric(hex_center$MAX))
+```
+
+It is obvious that there is a kind of correlation. Nevertheless since Egli excluded several sites which follow in a further step in our analysis the correlation is not significant and we are done with a visual impression.
+
+Finally, we calculate the energy density (MWh/km2) for each hexagon according to the meteotest study. V112-3.0 uses about .36km2 and the smaller V90-2.0 about .23km2.
+```{r}
+#CALCULATE ENERGY DENSITY MWH/KM2 FOR BOTH TURBINE TYPES
+hex_cenV112$enerDENSV112<-hex_cenV112$V112_POW/0.36
+hex_cenV90$enerDENSV90<-hex_cenV90$V90_POW/0.23 
+
+plot(subset(hex_center, enerDENSV112<enerDENSV90))
+```
+Interestingly, we can seee that in alpine regions the smaller Vestas V90-2.0 produces more energy per area compared to the taller V112-3.0.
+
+
+## Q1, number of sites to reach wind target with PEPP
+If we only consider the physical potential, how many sites do we have to select to reach the 2050 target of 4.3 GWh wind electricity production per year?
+
+```{r}
+
+#sort by V112 (descending)
+hex_cenV112 <- hex_cenV112[order( -hex_cenV112$V112_POW),]
+ener_sum<-0
+for(m in 1:length(hex_cenV112)){
+   if (ener_sum<4300000)  {
+  ener_sum<-ener_sum+hex_cenV112$V112_POW[m]
+  hex_cenV112$best_V112[m] <-1
+     }
+  else{
+  hex_cenV112$best_V112[m]<-0
+  }
+}
+
+length(subset(hex_cenV112,hex_cenV112$best_V112==1))
+
+#sort by V90 (descending)
+hex_cenV90 <- hex_cenV90[order( -hex_cenV90$V90_POW),]
+ener_sum<-0
+for(m in 1:length(hex_cenV90)){
+   if (ener_sum<4300000)  {
+  ener_sum<-ener_sum+hex_cenV90$V90_POW[m]
+  hex_cenV90$best_V90[m] <-1
+     }
+  else{
+  hex_cenV90$best_V90[m]<-0
+  }
+}
+
+length(subset(hex_cenV90,hex_cenV90$best_V90==1))
+
+
+tmap_mode("plot")
+## tmap mode set to plotting
+
+
+PEPP_V112<-tm_shape(dem_200) +
+  tm_raster(col = "dem_proj",
+            alpha=0.7,
+            palette = gray(0:100 / 100), 
+            style = "cont"
+            )+
+  tm_shape(subset(hex_cenV112,hex_cenV112$best_V112==1))+tm_dots(col = "green",size=0.2)+
+  tm_layout(title="PEPP best locations (N=357) V112-3.0 wind turbines")+
+  tm_legend(show=FALSE)
+
+PEPP_V90<-tm_shape(dem_200) +
+  tm_raster(col = "dem_proj",
+            alpha=0.7,
+            palette = gray(0:100 / 100), 
+            style = "cont"
+            )+
+  tm_shape(subset(hex_cenV90,hex_cenV90$best_V90==1))+tm_dots(col = "red",size=0.2)+
+  tm_layout(title="PEPP best locations (N=605) V90-2.0 wind turbines")+
+  tm_legend(show=FALSE)
+
+tmap_arrange(PEPP_V112, PEPP_V90)
+
+
+
+#save hex center
+st_write(st_as_sf(hex_cenV112),paste(outpath,paste(cur_dat,"CEN_V112.shp",sep="_"),sep = "/"))
+st_write(st_as_sf(hex_cenV90),paste(outpath,paste(cur_dat,"CEN_V90.shp",sep="_"),sep = "/"))
+
+
+```
+
+If it would be possible to build wind turbines only on the best PEPP sites, 337 of V112-3.0  and 590 of V90-2.0 are wind turbines needed. These turbines are mainly located in the eastern and western alpine areas.
