@@ -7,11 +7,31 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+require(raster)
+require(rgdal)
+require(snow)
+require(caret)
+require(dplyr)
+require(ggplot2)
+require(sf)
+require(sp)
+require(spatialEco)
+require(Hmisc)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+require(mapview)
+
 ```
 
-## Wind optim CH WP 2
+# Description of WP 2
 
-Test from remote PC
+This workpackages describes the exclusion of sites for wind energy production. Firstly, we exclude sites which are technically not feasible to develop. Secondly, we consider only sites which are outside "hard" restricted areas.  
+
+## Spatial joins in Arc Map
+The output of WP 1 were centers of hexagons according to the size of V112 or V90. Within arc map three spatial joins were performed with these center_points. Firstly, a spatial join within 500m from streets (3m). Secondly, a 300m buffer around building / housing zones and finally, an intersection with the TLM land cover classes.
 
 ```{r cars}
 summary(cars)

@@ -235,7 +235,7 @@ For the total area of Switzerland, the V112-3.0 provides around 1500 TWh of phys
 # Create a hexagonal grids
 For further analysis we need planning units (PU's) according to the dimensions of the wind Turbine. For Switzerland, Cattin, 2012 estimate the areas for a V112 to 0.36km2 and for the smaller V90 to 0.23km2. In order to represent the PU shape more naturally, we consider a hexagonal grid. For the E82 we calculate with a hex diameter of 500m, resulting in app. 6*the respective rotor diameter of 40m as a minimal distance to the next turbine. The same procedure for the E138 and V150.
 ```{r}
-hex_center <- st_read("D:/04_PROJECTS/2001_WIND_OPTIM/in/hex_lscpe.shp")
+hex_center <- st_read("D:/04_PROJECTS/2001_WIND_OPTIM/in/hex_egli.shp")
 hex_center<-st_transform(hex_center, crs="+init=epsg:21781")
 st_write(hex_center, dsn = con, layer = "base hex egli",drop=T)
 
@@ -369,75 +369,3 @@ plot(subset(hex_center, enerDENSV112<enerDENSV90))
 Interestingly, we can seee that in alpine regions the smaller Vestas V90-2.0 produces more energy per area compared to the taller V112-3.0.
 
 
-## Q1, number of sites to reach wind target with PEPP
-If we only consider the physical potential, how many sites do we have to select to reach the 2050 target of 4.3 GWh wind electricity production per year?
-
-```{r}
-
-#sort by V112 (descending)
-hex_cenV112 <- hex_cenV112[order( -hex_cenV112$V112_POW),]
-ener_sum<-0
-for(m in 1:length(hex_cenV112)){
-   if (ener_sum<4300000)  {
-  ener_sum<-ener_sum+hex_cenV112$V112_POW[m]
-  hex_cenV112$best_V112[m] <-1
-     }
-  else{
-  hex_cenV112$best_V112[m]<-0
-  }
-}
-
-length(subset(hex_cenV112,hex_cenV112$best_V112==1))
-
-#sort by V90 (descending)
-hex_cenV90 <- hex_cenV90[order( -hex_cenV90$V90_POW),]
-ener_sum<-0
-for(m in 1:length(hex_cenV90)){
-   if (ener_sum<4300000)  {
-  ener_sum<-ener_sum+hex_cenV90$V90_POW[m]
-  hex_cenV90$best_V90[m] <-1
-     }
-  else{
-  hex_cenV90$best_V90[m]<-0
-  }
-}
-
-length(subset(hex_cenV90,hex_cenV90$best_V90==1))
-
-
-tmap_mode("plot")
-## tmap mode set to plotting
-
-
-PEPP_V112<-tm_shape(dem_200) +
-  tm_raster(col = "dem_proj",
-            alpha=0.7,
-            palette = gray(0:100 / 100), 
-            style = "cont"
-            )+
-  tm_shape(subset(hex_cenV112,hex_cenV112$best_V112==1))+tm_dots(col = "green",size=0.2)+
-  tm_layout(title="PEPP best locations (N=357) V112-3.0 wind turbines")+
-  tm_legend(show=FALSE)
-
-PEPP_V90<-tm_shape(dem_200) +
-  tm_raster(col = "dem_proj",
-            alpha=0.7,
-            palette = gray(0:100 / 100), 
-            style = "cont"
-            )+
-  tm_shape(subset(hex_cenV90,hex_cenV90$best_V90==1))+tm_dots(col = "red",size=0.2)+
-  tm_layout(title="PEPP best locations (N=605) V90-2.0 wind turbines")+
-  tm_legend(show=FALSE)
-
-tmap_arrange(PEPP_V112, PEPP_V90)
-
-
-
-#save hex center
-st_write(st_as_sf(hex_cenV112),paste(outpath,paste(cur_dat,"CEN_V112.shp",sep="_"),sep = "/"))
-st_write(st_as_sf(hex_cenV90),paste(outpath,paste(cur_dat,"CEN_V90.shp",sep="_"),sep = "/"))
-
-
-```
-
-If it would be possible to build wind turbines only on the best PEPP sites, 337 of V112-3.0  and 590 of V90-2.0 are wind turbines needed. These turbines are mainly located in the eastern and western alpine areas.
