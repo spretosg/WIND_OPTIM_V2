@@ -10,7 +10,12 @@ output:
 ```{r setup, include=FALSE}
 install.packages("stars")
 install.packages("mapview")
+install.packages("Rpostgres")
+install.packages("RPostgres")
+install.packages("odbc")
+install.packages("RPostgreSQL")
 
+library(RPostgres)
 require(mapview)
 require(raster)
 require(rgdal)
@@ -23,7 +28,7 @@ require(tmaptools)
 require(DBI)
 require(RPostgreSQL)
 require(rpostgis)
-
+require(odbc)
 library(stars)
 
 rasterOptions(progress="T")#progress bar 
@@ -147,12 +152,18 @@ writeRaster(k100_200,filename=paste(outpath,"k100_200.tif",sep = "/"),overwrite=
 According to https://www.wind-turbine-models.com/turbines and thanks to philipp mattle from emch and berger, we extracted power efficiency values cp for Vestas V150-4.2 (150m hub height) E-138-3.5 (125m hub height) and E-82-2.0 (100m hub height) for each wind speed between 0 and 30 m/s.
 ```{r}
 #if not already in DB
+
+library(rpostgis)
+
+con <- dbConnect(RPostgres::Postgres(), 
+                 
+                 dbname = "publication_3_fin", host="localhost", port=5432, user="postgres", password="reto89LLSIMI")
+dbListTables(con)
+
 pow_curve<-read.csv(paste(wind_dat_path,"power_curves.csv",sep = "/"))
 
-##POSTGIS DB connection for the files (localhost)
-con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
-                        = "reto89LLSIMI" )
 
+Id(schema = "wind_input", name="pow_curve") 
 
 dbWriteTable(conn=con, value=pow_curve, name='power_curve', in_schema="wind_input")
 #or read from DB
@@ -163,6 +174,8 @@ pow_curve<-dbReadDataFrame(conn = con,power curve)
 The funtions "tot" take the airdensity, the efficency parameter cp, the mean wind speed for i intervalls and the two site specific weibull parameters A and k as inputs. In a loop between 0 and 30 all probabilities that the wind speeds will occur according to the specific weibull distribution is calculated and multiplied by the total amount of hours per year.
 
 ```{r}
+cur_dat<-Sys.Date()
+outpath<-"intermediate_steps/1_wp/pot_ener_CH"
 
 #125 meters above ground with E138-4.2 power curve (67m radius) with an efficiency parameter of 0.8 (mail philipp 12.5.20)
 fun_totE138<-function(airdens_200,cpe138,i,k,A){0.8*(0.5*(airdens_200*(67^2*pi)*i^3)*cpe138)/1000*(k/A*((i/A)^(k-1))*exp(1)^(-(i/A)^(k)))*8760}
@@ -207,11 +220,9 @@ for(i in 1:29){
 
 
 par(mfrow=c(2,2))
-plot(WEA_pow_tot125/1000, main="PEPP for E138-4.2 [MWh]")
-plot(WEA_pow_tot100/1000,main="PEPP for E82-2.0[MWh]")
-plot(WEA_pow_tot150/1000, main="PEPP for V150-4.2 [MWh]")
-plot(WEA_pow_tot150/1000-WEA_pow_tot100/1000, main="DIFF V150-E138")
-#plot(rel_diff_PEPP,main="rel_dff_PEPP")
+mapview(WEA_pow_tot125, alpha.regions = 0.8)
+mapview(WEA_pow_tot100, alpha.regions = 0.8)
+mapview(WEA_pow_tot150, alpha.regions = 0.8)
 
 
 writeRaster(WEA_pow_tot125/1000,filename=paste(outpath,paste(cur_dat,"E138_200_MWH.tif",sep="_"),sep = "/"),overwrite=T)
