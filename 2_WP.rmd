@@ -26,23 +26,70 @@ require(mapview)
 
 ```
 
-# Description of WP 2
+## Description of WP 2
 
 This workpackages describes the exclusion of sites for wind energy production. Firstly, we exclude sites which are technically not feasible to develop. Secondly, we consider only sites which are outside "hard" restricted areas.  
 
-## Spatial joins in Arc Map
-The output of WP 1 were centers of hexagons according to the size of V112 or V90. Within arc map three spatial joins were performed with these center_points. Firstly, a spatial join within 500m from streets (3m). Secondly, a 300m buffer around building / housing zones and finally, an intersection with the TLM land cover classes.
+# Slope
+We assign the slope to the all the centroids and remove the points which have a slope <11.4 degrees = 20%. 
 
 ```{r cars}
-summary(cars)
+dem_200<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/dem_proj.tif")
+dem_200<-projectRaster(dem_200, crs="+init=epsg:21781")
+slope<-terrain(dem_200, opt="slope", unit="degrees", neighbors=8)
+#plot(slope)
+
+#import all centroids from WP1
+cen_all<-st_read(dsn = con, layer="CEN_all_fin")
+#cen_all<-st_transform(cen_all, crs="+init=epsg:21781")
+#assign slope and remove the sites with too steep slopes
+cen_all$slope<-extract(slope,cen_all)
+cen_all<-subset(cen_all,slope<11.4)
 ```
 
-## Including Plots
+#Landcover
 
-You can also embed plots, for example:
+Secondly we remove all the points located within technically unfeasible zones (glaciers, lakes, swamps, rivers and rock fields)
 
 ```{r pressure, echo=FALSE}
 plot(pressure)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+#Further infrastructure
+
+Additionally, we remove all the points which are within No building zones (+300m), airport zones (+4000m), streets (+50m) and  railway lines (+50m). 
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+
+#Federal landscape and nature protection
+
+Finally, points within Swiss Nationalparks and protected marshes will be also excluded. 
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+
+##Distance measures
+
+In the next part we assign the distance in meters between the points which are technically possible (N=13'112) and the
+*Forests
+*Housing zones
+*Streets and Powerlines (Exploitation)
+*BLN
+*UNESCO
+*ISOS
+*FFF
+*DEER protection areas
+*Dry meadows
+
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+# further spatial checks    
+Finally we need to know for each point the Infrastructure density, the noise level and the landscape coherence
