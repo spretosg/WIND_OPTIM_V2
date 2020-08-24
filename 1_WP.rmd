@@ -11,11 +11,11 @@ output:
 install.packages("stars")
 install.packages("mapview")
 install.packages("Rpostgres")
-install.packages("RPostgres")
-install.packages("odbc")
-install.packages("RPostgreSQL")
 
-library(RPostgres)
+
+
+
+
 require(mapview)
 require(raster)
 require(rgdal)
@@ -28,7 +28,7 @@ require(tmaptools)
 require(DBI)
 require(RPostgreSQL)
 require(rpostgis)
-require(odbc)
+
 library(stars)
 
 rasterOptions(progress="T")#progress bar 
@@ -42,8 +42,9 @@ coord<-coord %>%
 
 
 ##POSTGIS DB connection for the files (ETH)
-#con<- dbConnect("PostgreSQL", dbname = "spreto", host = "localhost", user = "postgres", password
-                      #  = "GGanH4Jj9pos89")
+con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
+                        = "reto89LLSIMI")
+dbDisconnect()
 ```
 
 # Description of WP PEPP
@@ -153,21 +154,7 @@ According to https://www.wind-turbine-models.com/turbines and thanks to philipp 
 ```{r}
 #if not already in DB
 
-library(rpostgis)
 
-con <- dbConnect(RPostgres::Postgres(), 
-                 
-                 dbname = "publication_3_fin", host="localhost", port=5432, user="postgres", password="reto89LLSIMI")
-dbListTables(con)
-
-pow_curve<-read.csv(paste(wind_dat_path,"power_curves.csv",sep = "/"))
-
-
-Id(schema = "wind_input", name="pow_curve") 
-
-dbWriteTable(conn=con, value=pow_curve, name='power_curve', in_schema="wind_input")
-#or read from DB
-pow_curve<-dbReadDataFrame(conn = con,power curve)
 ```
 
 ## Spatial explicit power calculation for wind turbines
@@ -235,36 +222,40 @@ For the total area of Switzerland, the V112-3.0 provides around 1500 TWh of phys
 # Create a hexagonal grids
 For further analysis we need planning units (PU's) according to the dimensions of the wind Turbine. For Switzerland, Cattin, 2012 estimate the areas for a V112 to 0.36km2 and for the smaller V90 to 0.23km2. In order to represent the PU shape more naturally, we consider a hexagonal grid. For the E82 we calculate with a hex diameter of 500m, resulting in app. 6*the respective rotor diameter of 40m as a minimal distance to the next turbine. The same procedure for the E138 and V150.
 ```{r}
-hex_center <- st_read("D:/04_PROJECTS/2001_WIND_OPTIM/in/hex_egli.shp")
-hex_center<-st_transform(hex_center, crs="+init=epsg:21781")
-st_write(hex_center, dsn = con, layer = "base hex egli",drop=T)
+
+boundary<-readOGR("input_data/CH_geom/CH_Grenze.shp")
+
+mapview(boundary)
+
+pgInsert(con,c("GEO_base_data","CH_boundaries"),boundary)
 
 #create hexagonal grids with the corresponding cellsizes (hexagon formula d2)
 ###E138
-PU_E138<-st_make_grid(st_as_sfc(st_bbox(hex_center)), what = "polygons", cellsize = 700, square = FALSE, crs = "+init=epsg:21781")
+
+PU_E138<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 700, square = FALSE)
 PU_E138<-st_as_sf(PU_E138)
 PU_E138$PU_ID<-c(1:nrow(PU_E138))
-hex_cenE138<-st_centroid(PU_E138)
-st_write(PU_E138, dsn = con, layer = "PU_E138", driver="ESRI Shapefile")
 
+hex_cenE138<-as(st_centroid(PU_E138),"Spatial")
+#pgInsert(con,c("WT_PU_HEX","cen_E138"),hex_cenE138)
+
+
+  mapview(test[c(1:40),])
 
 ### E82
-PU_E82<-st_make_grid(st_as_sfc(st_bbox(hex_center)), what = "polygons", cellsize = 500, square = FALSE, crs = "+init=epsg:21781")
+PU_E82<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 500, square = FALSE, crs = "+init=epsg:21781")
 PU_E82<-st_as_sf(PU_E82)
 PU_E82$PU_ID<-c(1:nrow(PU_E82))
-hex_cenE82<-st_centroid(PU_E82)
-st_write(PU_E82, dsn = con, layer = "PU_E82", driver="ESRI Shapefile")
+hex_cenE82<-as(st_centroid(PU_E82),"Spatial")
+#pgInsert(con,c("WT_PU_HEX","cen_E82"),hex_cenE82)
 
 ####V150
-PU_V150<-st_make_grid(st_as_sfc(st_bbox(hex_center)), what = "polygons", cellsize = 900, square = FALSE, crs = "+init=epsg:21781")
+PU_V150<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 900, square = FALSE, crs = "+init=epsg:21781")
 PU_V150<-st_as_sf(PU_V150)
 PU_V150$PU_ID<-c(1:nrow(PU_V150))
-hex_cenV150<-st_centroid(PU_V150)
-st_write(PU_V150, dsn = con, layer = "PU_V150")
+hex_cenV150<-as(st_centroid(PU_V150),"Spatial")
+pgInsert(con,c("WT_PU_HEX","cen_V150"),hex_cenV150)
 
-#import CH boundary to clip points
-boundary<-st_read(con,"CH_Grenze")
-boundary<-st_transform(boundary, crs="+init=epsg:21781")
 
 #crop points with boundary of CH
 hex_cenV150<-hex_cenV150[boundary,]
@@ -273,6 +264,8 @@ hex_cenV150<-hex_cenV150[boundary,]
 hex_cenE82<-hex_cenE82[boundary,]
 #E138
 hex_cenE138<-hex_cenE138[boundary,]
+#V150
+hex_cenV150<-hex_cenV150[boundary,]
 
 ```
 
@@ -282,8 +275,13 @@ The three different wind turbine models should be located in three specific regi
 ```{r}
 
 #import CH boundary to clip points
-LT<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/BIOGEOGR_REG/LT3_rast1.tif")
+LT<-raster("input_data/BIOG_REG/LT3_rast1.tif")
 LT<-projectRaster(LT, crs="+init=epsg:21781")
+
+#WEA_pow_tot150<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_V150_200MWH.tif")
+WEA_pow_tot125<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-05-12_E138_200MWH.tif")
+#WEA_pow_tot100<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_E82_200MWH.tif")
+
 hex_cenV150$LT<-extract(LT,hex_cenV150)
 hex_cenE138$LT<-extract(LT,hex_cenE138)
 hex_cenE82$LT<-extract(LT,hex_cenE82)
@@ -295,10 +293,6 @@ hex_cenE82$prod_MW<-extract(WEA_pow_tot100/1000,hex_cenE82,fun=mean, buffer= 250
 hex_cenV150_sel<-subset(hex_cenV150,LT==1,)
 hex_cenE82_sel<-subset(hex_cenE82,LT==2,)
 hex_cenE138_sel<-subset(hex_cenE138,LT==3,)
-
-st_write(hex_cenE138, dsn = con, layer = "CEN_all_E138", driver = "ESRI Shapefile")
-st_write(hex_cenE82, dsn = con, layer = "CEN_all_E82", driver = "ESRI Shapefile")
-st_write(hex_cenV150, dsn = con, layer = "CEN_all_V150", driver = "ESRI Shapefile")
 
 #combine
 cen_all<-rbind(hex_cenV150_sel,hex_cenE82_sel,hex_cenE138_sel)
@@ -314,7 +308,7 @@ Egli et al., 2017 calculated in a hexagonal grid further site specific values. T
 
 
 ```{r}
-cen_all<-st_read(dsn = con, layer="all_cen")
+cen_all<-st_read(dsn = con, layer="CEN_all_fin")
 
 #extract raster values alti
 cen_all$alti<-extract(dem_200,hex_all)
@@ -335,37 +329,7 @@ if(cen_all$lt[i]==1){
   cen_all$WT_model[i]<-"E138_4.0"
   }
 }
+all_cen<-readOGR("intermediate_steps/1_wp/2020-05-14_CEN_all_fin.shp")
 
-st_write(cen_all,paste(outpath,paste(cur_dat,"CEN_all_fin.shp",sep="_"),sep = "/"),overwrite=T)
-st_write(cen_all, dsn = con, layer = "CEN_all_fin", driver = "ESRI Shapefile")
+pgInsert(con,c("WT_PU_HEX","all_cen_200824"),all_cen)
 ```
-
-In the following we should check if our data and Egli et al., 2017 correlates. Additionally, we test if our PEPP is larger or smaller within 10% boundaries. in 800 cases Egli et al., 2017 estimate higher potential compared to our dataset. In 10000 cases our data is higher compared to Egli.
-
-```{r}
-plot(hex_center$MAX,hex_center$MEAN_V112)
-plot(hex_center$MAX,hex_center$MEAN_V90)
-a<-subset(hex_center, MAX >0 & MAX*1.1<MEAN_V112)
-plot(a$MAX,a$MEAN_V112)
-plot(a)
-
-b<-subset(hex_center, MAX >0 & MAX*0.9>MEAN_V112)
-plot(b)
-
-histogram(hex_center$MEAN_V112)
-histogram(as.numeric(hex_center$MAX))
-```
-
-It is obvious that there is a kind of correlation. Nevertheless since Egli excluded several sites which follow in a further step in our analysis the correlation is not significant and we are done with a visual impression.
-
-Finally, we calculate the energy density (MWh/km2) for each hexagon according to the meteotest study. V112-3.0 uses about .36km2 and the smaller V90-2.0 about .23km2.
-```{r}
-#CALCULATE ENERGY DENSITY MWH/KM2 FOR BOTH TURBINE TYPES
-hex_cenV112$enerDENSV112<-hex_cenV112$V112_POW/0.36
-hex_cenV90$enerDENSV90<-hex_cenV90$V90_POW/0.23 
-
-plot(subset(hex_center, enerDENSV112<enerDENSV90))
-```
-Interestingly, we can seee that in alpine regions the smaller Vestas V90-2.0 produces more energy per area compared to the taller V112-3.0.
-
-
