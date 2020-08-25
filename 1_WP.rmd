@@ -44,7 +44,7 @@ coord<-coord %>%
 ##POSTGIS DB connection for the files (ETH)
 con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
-dbDisconnect()
+
 ```
 
 # Description of WP PEPP
@@ -152,9 +152,9 @@ writeRaster(k100_200,filename=paste(outpath,"k100_200.tif",sep = "/"),overwrite=
 ## cp 
 According to https://www.wind-turbine-models.com/turbines and thanks to philipp mattle from emch and berger, we extracted power efficiency values cp for Vestas V150-4.2 (150m hub height) E-138-3.5 (125m hub height) and E-82-2.0 (100m hub height) for each wind speed between 0 and 30 m/s.
 ```{r}
-#if not already in DB
+#cp_stored in DB
 
-
+pow_curve<-dbReadDataFrame(con,c("wind_input","pow_curve")) 
 ```
 
 ## Spatial explicit power calculation for wind turbines
@@ -223,11 +223,13 @@ For the total area of Switzerland, the V112-3.0 provides around 1500 TWh of phys
 For further analysis we need planning units (PU's) according to the dimensions of the wind Turbine. For Switzerland, Cattin, 2012 estimate the areas for a V112 to 0.36km2 and for the smaller V90 to 0.23km2. In order to represent the PU shape more naturally, we consider a hexagonal grid. For the E82 we calculate with a hex diameter of 500m, resulting in app. 6*the respective rotor diameter of 40m as a minimal distance to the next turbine. The same procedure for the E138 and V150.
 ```{r}
 
-boundary<-readOGR("input_data/CH_geom/CH_Grenze.shp")
+#boundary<-readOGR("input_data/CH_geom/CH_Grenze.shp")
+#pgInsert(con,c("GEO_base_data","CH_boundaries"),boundary)
 
+boundary<-pgGetGeom(conn = con,name = c("GEO_base_data","CH_boundaries"))
 mapview(boundary)
 
-pgInsert(con,c("GEO_base_data","CH_boundaries"),boundary)
+
 
 #create hexagonal grids with the corresponding cellsizes (hexagon formula d2)
 ###E138
@@ -237,36 +239,30 @@ PU_E138<-st_as_sf(PU_E138)
 PU_E138$PU_ID<-c(1:nrow(PU_E138))
 
 hex_cenE138<-as(st_centroid(PU_E138),"Spatial")
-#pgInsert(con,c("WT_PU_HEX","cen_E138"),hex_cenE138)
-
-
-  mapview(test[c(1:40),])
 
 ### E82
 PU_E82<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 500, square = FALSE, crs = "+init=epsg:21781")
 PU_E82<-st_as_sf(PU_E82)
 PU_E82$PU_ID<-c(1:nrow(PU_E82))
 hex_cenE82<-as(st_centroid(PU_E82),"Spatial")
-#pgInsert(con,c("WT_PU_HEX","cen_E82"),hex_cenE82)
+
 
 ####V150
 PU_V150<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 900, square = FALSE, crs = "+init=epsg:21781")
 PU_V150<-st_as_sf(PU_V150)
 PU_V150$PU_ID<-c(1:nrow(PU_V150))
 hex_cenV150<-as(st_centroid(PU_V150),"Spatial")
-pgInsert(con,c("WT_PU_HEX","cen_V150"),hex_cenV150)
-
 
 #crop points with boundary of CH
 hex_cenV150<-hex_cenV150[boundary,]
-
 #E82
 hex_cenE82<-hex_cenE82[boundary,]
 #E138
 hex_cenE138<-hex_cenE138[boundary,]
-#V150
-hex_cenV150<-hex_cenV150[boundary,]
 
+pgInsert(con,c("WT_PU_HEX","cen_V150"),hex_cenV150)
+pgInsert(con,c("WT_PU_HEX","cen_E82"),hex_cenE82)
+pgInsert(con,c("WT_PU_HEX","cen_E138"),hex_cenE138)
 ```
 
 
@@ -278,9 +274,9 @@ The three different wind turbine models should be located in three specific regi
 LT<-raster("input_data/BIOG_REG/LT3_rast1.tif")
 LT<-projectRaster(LT, crs="+init=epsg:21781")
 
-#WEA_pow_tot150<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_V150_200MWH.tif")
+WEA_pow_tot150<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_V150_200MWH.tif")
 WEA_pow_tot125<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-05-12_E138_200MWH.tif")
-#WEA_pow_tot100<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_E82_200MWH.tif")
+WEA_pow_tot100<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_E82_200MWH.tif")
 
 hex_cenV150$LT<-extract(LT,hex_cenV150)
 hex_cenE138$LT<-extract(LT,hex_cenE138)
@@ -296,7 +292,9 @@ hex_cenE138_sel<-subset(hex_cenE138,LT==3,)
 
 #combine
 cen_all<-rbind(hex_cenV150_sel,hex_cenE82_sel,hex_cenE138_sel)
-st_write(cen_all, dsn = con, layer = "CEN_all", driver = "ESRI Shapefile")
+pgInsert(con,c("WT_PU_HEX","cen_all_200825"),cen_all)
+
+mapview(cen_all,zcol = "LT", burst = TRUE)
 
 ```
 Interestingly, the selection based on LT produces some holes (not many) anyway, we therefore exported the hex_cenXY to arcmap and combined the layers there to one single layer cen_all
@@ -308,28 +306,28 @@ Egli et al., 2017 calculated in a hexagonal grid further site specific values. T
 
 
 ```{r}
-cen_all<-st_read(dsn = con, layer="CEN_all_fin")
 
 #extract raster values alti
 cen_all$alti<-extract(dem_200,hex_all)
 
 #extract raster values airdens
-cen_all$airdens<-extract(airdens_200,hex_all)
+cen_all$airdens<-extract(airdens_200,cen_all)
 
 #extract respective MW from rasters and assign other values
 
-for(i in 1:nrow(cen_all)){
-if(cen_all$lt[i]==1){
+for(i in 1:length(cen_all)){
+if(cen_all$LT[i]==1){
   cen_all$WT_model[i]<-"V150_4.2"
 }
-  else if(cen_all$lt[i]==2){
+  else if(cen_all$LT[i]==2){
   cen_all$WT_model[i]<-"E82_2.0"
 }
   else{
   cen_all$WT_model[i]<-"E138_4.0"
   }
 }
-all_cen<-readOGR("intermediate_steps/1_wp/2020-05-14_CEN_all_fin.shp")
+#all_cen<-readOGR("intermediate_steps/1_wp/2020-05-14_CEN_all_fin.shp")
 
-pgInsert(con,c("WT_PU_HEX","all_cen_200824"),all_cen)
+pgInsert(con,c("WT_PU_HEX",paste("cen_all",cur_dat,sep = "_")),cen_all)
+mapview(cen_all,zcol = "WT_model", burst = TRUE)
 ```
