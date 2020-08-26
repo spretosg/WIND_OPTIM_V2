@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 require(raster)
 require(rgdal)
 require(snow)
-require(caret)
+require(mapview)
 require(dplyr)
 require(ggplot2)
 require(sf)
@@ -24,6 +24,9 @@ require(RPostgreSQL)
 require(rpostgis)
 require(mapview)
 
+con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
+                        = "reto89LLSIMI")
+
 ```
 
 ## Description of WP 2
@@ -34,14 +37,13 @@ This workpackages describes the exclusion of sites for wind energy production. F
 We assign the slope to the all the centroids and remove the points which have a slope <11.4 degrees = 20%. 
 
 ```{r cars}
-dem_200<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/dem_proj.tif")
+dem_200<-raster("input_data/200_DEM.tif")
 dem_200<-projectRaster(dem_200, crs="+init=epsg:21781")
 slope<-terrain(dem_200, opt="slope", unit="degrees", neighbors=8)
-#plot(slope)
+#mapview(slope)
 
 #import all centroids from WP1
-cen_all<-st_read(dsn = con, layer="CEN_all_fin")
-#cen_all<-st_transform(cen_all, crs="+init=epsg:21781")
+cen_all<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_all_2020-08-25"))
 #assign slope and remove the sites with too steep slopes
 cen_all$slope<-extract(slope,cen_all)
 cen_all<-subset(cen_all,slope<11.4)
@@ -49,10 +51,38 @@ cen_all<-subset(cen_all,slope<11.4)
 
 #Landcover
 
-Secondly we remove all the points located within technically unfeasible zones (glaciers, lakes, swamps, rivers and rock fields)
+Secondly we remove all the points located within technically unfeasible zones (glaciers, lakes, swamps, rivers and rock fields) We therefore transform the TLM into a binary raster (0=all areas, 1=not feasible ares) 
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
+rest_area = st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/CH_geom/TLM_BB.shp", query = "SELECT * FROM \"TLM_BB\" WHERE OBJEKTART = 10 OR 
+                                                              OBJEKTART = 11 OR
+                                                              OBJEKTART = 9 OR
+                                                              OBJEKTART = 7 OR
+                                                              OBJEKTART = 1")
+
+rest_area<-as(st_zm(rest_area),"Spatial")
+#create a raster after transforming into the new CRS
+rest_area<-spTransform(rest_area,crs(cen_all))
+rest_area<-st_as_sf(rest_area)
+
+cen_all<-st_as_sf(cen_all)
+
+cen_all = st_join(cen_all, rest_area["OBJEKTART"], left=T)
+#and just keep the points which are not (na) in a specific area
+cen_all<-filter(cen_all,is.na(cen_all$OBJEKTART))
+cen_all<-as(cen_all,"Spatial")
+mapview(cen_all)
+pgInsert(con,c("WT_PU_HEX","cen_all_LC"),cen_all)
+
+cen<-pgGetGeom(con,c("WT_PU_HEX","cen_all_LC"))
+cen<-st_as_sf(cen)
+st_write(cen,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps", "cen_lc",driver = "ESRI shapefile")
+
+tmp_pts = st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/dst_WHZ.shp")
+tmp_pts<-tmp_pts[ -23] 
+names(tmp_pts)[23]<-"dist_WHZ"
+st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps", "tmp_re18",driver = "ESRI shapefile",overwrite=F)
+
 ```
 
 #Further infrastructure
@@ -60,32 +90,118 @@ plot(pressure)
 Additionally, we remove all the points which are within No building zones (+300m), airport zones (+4000m), streets (+50m) and  railway lines (+50m). 
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
+
+tmp_pts<-subset(tmp_pts,dist_WHZ>300)
+tmp_pts<-subset(tmp_pts,dist_air>4000)
+tmp_pts<-subset(tmp_pts,dist_str>50)
+tmp_pts<-subset(tmp_pts,dist_rail>50)
+
 ```
 
 
 #Federal landscape and nature protection
 
-Finally, points within Swiss Nationalparks and protected marshes will be also excluded. 
+Finally, points within Swiss Nationalparks and protected marshes will be also excluded. (dist_leag)
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
+tmp_pts<-subset(tmp_pts,dist_LEAG>0)
+mapview(tmp_pts)
 ```
+
+# Further attributes
+We attach meters above sea level (msl), the surrounding noise of the wt (noise) and the binary variable fff (1=in fff 0=not in fff) to all points.
+
+```{r}
+tmp_pts$msl<-extract(dem_200,tmp_pts)
+
+
+noise<-raster("input_data/constr/StrassenLaerm_Tag.tif")
+noise[is.na(noise[])] <- 0
+tmp_pts$noise<-extract(noise,tmp_pts, buffer= 600, fun=mean)
+
+
+FFF<-raster("input_data/constr/FFF_proj.tif")
+FFF[is.na(FFF[])] <- 0
+tmp_pts$FFF<-extract(FFF,tmp_pts)
+
+st_write(tmp_pts[c(1:20),],"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "test_pts",driver = "ESRI shapefile",overwrite=T)
+
+#replace NA's with 0 to indicate that the 
+
+```
+
+## viewshed and further distance weighted attributes per WT
+```{r}
+#for the arcgis approach
+library(reticulate)
+use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
+#Import arcpy
+arcpy <- import("arcpy")
+```
+
+
+```{python}
+import arcpy
+import numpy as np
+from arcpy import env
+from arcpy.sa import IsNull
+
+arcpy.CheckOutExtension("3D")
+arcpy.CheckOutExtension("Spatial")
+
+# Set overwrite option
+arcpy.env.overwriteOutput = True
+
+dem = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/200_DEM.tif'
+arcpy.env.extent = dem
+INFRA= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/INFRA.tif'
+
+INFRA=arcpy.sa.Int(INFRA)
+print("ready")
+inpoints="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/test_pts.shp"
+
+arcpy.MakeFeatureLayer_management(inpoints, "pts_lyr9")
+with arcpy.da.SearchCursor('pts_lyr9', ['PU_ID']) as cursor:
+   for row in cursor:
+   
+      fid = str(row[0])  ### Must be string
+      print (fid)
+  
+      arcpy.SelectLayerByAttribute_management("pts_lyr9", "NEW_SELECTION", '"PU_ID" = {}'.format(fid))
+      outViewshed = arcpy.Viewshed2_3d(in_raster=dem, in_observer_features="pts_lyr9", surface_offset=1.5, observer_offset=120, outer_radius=10000,  refractivity_coefficient=0.13)
+      outViewshed = arcpy.sa.Int(outViewshed)
+      
+      ECLE = arcpy.sa.EucDistance(obsfeat, 10000, 200)
+
+      IDW = outViewshed * 1/ECLE
+
+      outINFRA = IDW * INFRA
+      outINFRA.save(
+      "D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/infra/IDW_INFRA" +fid+".tif")
+      IDW.save("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/idw/IDW" +fid+".tif")
+     # outViewshed.save("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/view/view" +fid+".tif"")
+      
+   
+arcpy.CheckInExtension("3D")
+arcpy.CheckInExtension("Spatial")
+```
+
 
 
 ##Distance measures
 
 In the next part we assign the distance in meters between the points which are technically possible (N=13'112) and the
-*Forests
-*Housing zones
-*Streets and Powerlines (Exploitation)
-*BLN
-*UNESCO
-*ISOS
-*FFF
-*DEER protection areas
-*Dry meadows
-
+*Forests (dist_for)
+*Building zone (dist_BZ)
+*Streets and Powerlines (Exploitation) (dist_street, dist_PL)
+*BLN (dist_BLN)
+*UNESCO (dist_UNESCO)
+*ISOS (dist_ISOS)
+*flood plains (dist_flood)
+*DEER protection areas (dist_JB)
+*Dry meadows (dist_MEAD)
+*Bird protection areas (dist_bird)
+*rivers (dist_riv)
 
 ```{r pressure, echo=FALSE}
 plot(pressure)
