@@ -23,6 +23,7 @@ require(DBI)
 require(RPostgreSQL)
 require(rpostgis)
 require(mapview)
+require(reticulate)
 
 con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
@@ -38,12 +39,17 @@ We assign the slope to the all the centroids and remove the points which have a 
 
 ```{r cars}
 dem_200<-raster("input_data/200_DEM.tif")
-dem_200<-projectRaster(dem_200, crs="+init=epsg:21781")
+dem_200<-projectRaster(dem_200, crs="+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1 +x_0=600000 +y_0=200000 +ellps=bessel +towgs84=674.4,15.1,405.3,0,0,0,0 +units=m +no_defs")
+
 slope<-terrain(dem_200, opt="slope", unit="degrees", neighbors=8)
 #mapview(slope)
 
 #import all centroids from WP1
 cen_all<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_all_2020-08-25"))
+cen_all<-spTransform(cen_all,crs(dem_200))
+pgInsert(con,c("WT_PU_HEX","cen_all_LV03"),cen_all)
+test<-pgGetGeom(con,c("WT_PU_HEX","WT_PTS_LV03_200827"))
+
 #assign slope and remove the sites with too steep slopes
 cen_all$slope<-extract(slope,cen_all)
 cen_all<-subset(cen_all,slope<11.4)
@@ -78,7 +84,7 @@ cen<-pgGetGeom(con,c("WT_PU_HEX","cen_all_LC"))
 cen<-st_as_sf(cen)
 st_write(cen,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps", "cen_lc",driver = "ESRI shapefile")
 
-tmp_pts = st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/dst_WHZ.shp")
+tmp_pts = st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/tmp_re18.shp")
 tmp_pts<-tmp_pts[ -23] 
 names(tmp_pts)[23]<-"dist_WHZ"
 st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps", "tmp_re18",driver = "ESRI shapefile",overwrite=F)
@@ -90,6 +96,20 @@ st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_ste
 Additionally, we remove all the points which are within No building zones (+300m), airport zones (+4000m), streets (+50m) and  railway lines (+50m). 
 
 ```{r pressure, echo=FALSE}
+
+#some statistics
+install.packages("reshape2")
+require(reshape2)
+#wide to long for all distance measures
+df_pts<-as.data.frame(tmp_pts)
+melt.pts<-melt(df_pts[c(7:12,14:23)])
+
+#histogram of all variables
+ggplot(data = melt.pts, aes(x = value)) + 
+geom_histogram() + 
+facet_wrap(~variable, scales = "free")
+
+
 
 tmp_pts<-subset(tmp_pts,dist_WHZ>300)
 tmp_pts<-subset(tmp_pts,dist_air>4000)
@@ -105,7 +125,10 @@ Finally, points within Swiss Nationalparks and protected marshes will be also ex
 
 ```{r pressure, echo=FALSE}
 tmp_pts<-subset(tmp_pts,dist_LEAG>0)
-mapview(tmp_pts)
+
+#check where these points are and how much the WT might produce
+pal<-mapviewPalette("mapviewSpectralColors")
+mapview(tmp_pts, col.regions=pal(100), zcol=c("prod_MW")) 
 ```
 
 # Further attributes
@@ -119,12 +142,30 @@ noise<-raster("input_data/constr/StrassenLaerm_Tag.tif")
 noise[is.na(noise[])] <- 0
 tmp_pts$noise<-extract(noise,tmp_pts, buffer= 600, fun=mean)
 
+##statistics about the street noise around the WT's
+ggplot(data = tmp_pts, aes(x = noise)) + 
+geom_histogram()
 
 FFF<-raster("input_data/constr/FFF_proj.tif")
 FFF[is.na(FFF[])] <- 0
 tmp_pts$FFF<-extract(FFF,tmp_pts)
+ggplot(data = tmp_pts, aes(x = FFF)) + 
+geom_bar()
 
-st_write(tmp_pts[c(1:20),],"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "test_pts",driver = "ESRI shapefile",overwrite=T)
+BEV<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/BEVÖLKERUNG/bev_200.tif")
+BEV[is.na(BEV[])] <- 0
+crs(BEV)<-"+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1 +x_0=2600000 +y_0=1200000 +ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs"
+
+
+BEV<-projectRaster(BEV, dem_200)
+crs(BEV)
+writeRaster(BEV,"test/pop_dens_200.tif")
+
+mapview(BEV)
+#insert the 8800 pts into the database and store it as shp file
+tmp_pts<-as(tmp_pts,"Spatial")
+pgInsert(con,c("WT_PU_HEX","WT_pts_fin_200827"),tmp_pts)
+st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "all_pts",driver = "ESRI shapefile",overwrite=T)
 
 #replace NA's with 0 to indicate that the 
 
@@ -134,9 +175,14 @@ st_write(tmp_pts[c(1:20),],"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test",
 ```{r}
 #for the arcgis approach
 library(reticulate)
+
 use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
 #Import arcpy
 arcpy <- import("arcpy")
+
+test1<-test[c(1:10),]
+test1<-st_as_sf(test1)
+st_write(test1,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "test10",driver = "ESRI shapefile",overwrite=T)
 ```
 
 
@@ -152,34 +198,81 @@ arcpy.CheckOutExtension("Spatial")
 # Set overwrite option
 arcpy.env.overwriteOutput = True
 
-dem = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/200_DEM.tif'
-arcpy.env.extent = dem
+DEM = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/200_DEM.tif'
+
 INFRA= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/INFRA.tif'
 
-INFRA=arcpy.sa.Int(INFRA)
-print("ready")
-inpoints="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/test_pts.shp"
+POP_DENS= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/pop_dens_200.tif'
+arcpy.env.extent = POP_DENS
 
-arcpy.MakeFeatureLayer_management(inpoints, "pts_lyr9")
-with arcpy.da.SearchCursor('pts_lyr9', ['PU_ID']) as cursor:
+POP_DENS=arcpy.sa.Int(POP_DENS)
+INFRA=arcpy.sa.Int(INFRA)
+
+inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/test10.shp'
+
+arcpy.MakeFeatureLayer_management(inpoints, "pts_lyr")
+with arcpy.da.SearchCursor('pts_lyr', ['PU_ID','LT']) as cursor:
    for row in cursor:
    
       fid = str(row[0])  ### Must be string
-      print (fid)
+      lt = float(row[1])
   
-      arcpy.SelectLayerByAttribute_management("pts_lyr9", "NEW_SELECTION", '"PU_ID" = {}'.format(fid))
-      outViewshed = arcpy.Viewshed2_3d(in_raster=dem, in_observer_features="pts_lyr9", surface_offset=1.5, observer_offset=120, outer_radius=10000,  refractivity_coefficient=0.13)
+      arcpy.SelectLayerByAttribute_management("pts_lyr", "NEW_SELECTION", '"PU_ID" = {}'.format(fid))
+      
+
+#set the parameters for the viewshed according to the WT_model
+
+
+      if lt==1:
+        #V150
+        print(fid," this is a V150 in landscape nr.",lt)
+        obs_offset = 150
+        outer_rad = 33000
+           
+      
+      elif lt==2:
+        print(fid, " this is an E82 in landscape nr." ,lt)
+        obs_offset = 100
+        outer_rad = 15000
+            
+      else:
+        print(fid, " this is an E138 in landscape nr." ,lt)
+        obs_offset = 125
+        outer_rad = 20000
+      
+      outViewshed = arcpy.Viewshed2_3d(in_raster=DEM, in_observer_features="pts_lyr", surface_offset=1.5, observer_offset=obs_offset, outer_radius=outer_rad,  refractivity_coefficient=0.13)
       outViewshed = arcpy.sa.Int(outViewshed)
       
-      ECLE = arcpy.sa.EucDistance(obsfeat, 10000, 200)
+              # determine number of visible cells  
+      myArray = arcpy.RasterToNumPyArray(outViewshed)  
+      visPixels = myArray.sum()  
+      print(visPixels)
+  
+      # update value in point featureclass  
+     
+      del myArray
+      
+      ECLE = arcpy.sa.EucDistance("pts_lyr", 10000, 200)
 
       IDW = outViewshed * 1/ECLE
 
       outINFRA = IDW * INFRA
-      outINFRA.save(
-      "D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/infra/IDW_INFRA" +fid+".tif")
-      IDW.save("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/idw/IDW" +fid+".tif")
-     # outViewshed.save("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/view/view" +fid+".tif"")
+      myArray1 = arcpy.RasterToNumPyArray(outINFRA)  
+      myArray1[np.where(myArray1 <0)]=0
+      visINFRA = myArray1.sum() 
+      print(visINFRA)
+      
+      outPOPdens=IDW * POP_DENS
+      myArray2 = arcpy.RasterToNumPyArray(outPOPdens)  
+      myArray2[np.where(myArray2 <0)]=0
+      visPop = myArray2.sum() 
+      print(visPop)
+      
+     # outINFRA.save(
+      #"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/infra/IDW_INFRA" +fid+".tif")
+      #IDW.save("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/idw/IDW" +fid+".tif")
+      #outPOPdens.save(
+      #"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/pop_dens/IDW_POP" +fid+".tif")
       
    
 arcpy.CheckInExtension("3D")

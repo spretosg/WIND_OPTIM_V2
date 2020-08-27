@@ -12,10 +12,6 @@ install.packages("stars")
 install.packages("mapview")
 install.packages("Rpostgres")
 
-
-
-
-
 require(mapview)
 require(raster)
 require(rgdal)
@@ -57,7 +53,10 @@ As a first step, the topographic elevation model of Switzerland (dem_200), with 
 ```{r}
 
 dem_200<-raster("input_data/200_DEM.tif")
-dem_200<-projectRaster(dem_200, crs="+init=epsg:21781")
+
+#we use the old coordinate system CH1903/LV03 since the data of the Swiss TLM are only available in this coordinates!
+
+dem_200<-projectRaster(dem_200, crs="+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1 +x_0=600000 +y_0=200000 +ellps=bessel +towgs84=674.4,15.1,405.3,0,0,0,0 +units=m +no_defs")
 mapview(dem_200)
 
 crs(dem_200)
@@ -227,6 +226,7 @@ For further analysis we need planning units (PU's) according to the dimensions o
 #pgInsert(con,c("GEO_base_data","CH_boundaries"),boundary)
 
 boundary<-pgGetGeom(conn = con,name = c("GEO_base_data","CH_boundaries"))
+boundary<-spTransform(boundary,crs(dem_200))
 mapview(boundary)
 
 
