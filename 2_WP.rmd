@@ -175,19 +175,22 @@ st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "all_pts"
 ```{r}
 #for the arcgis approach
 library(reticulate)
-
+Sys.setenv(RETICULATE_PYTHON = "C:/Python27/ArcGISx6410.7/python.exe")
 use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
 #Import arcpy
 arcpy <- import("arcpy")
 
 test1<-test[c(1:10),]
-test1<-st_as_sf(test1)
-st_write(test1,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "test10",driver = "ESRI shapefile",overwrite=T)
+test1<-st_as_sf(test)
+st_write(test1,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis", "view_inpoints",driver = "ESRI shapefile",overwrite=T)
 ```
 
 
+
+Here we import all points convert these to a feature layer and calculate three values. Firstly with the arcpy function 3dviewshed, the viewshed for each single point is calculated with the parameters dependent of the WT model (radius and target height). We consider hub heights instead of total heights. This corrects slightly for the fact that the visibility is different depending on the angle the WT is observed. Secondly, we calculate a grid containing the inverse distances for all raster cells in the viewshed. Thirdly we calculate the visual impact as the mean of (viewshed * IDW) (far away visible pixels are less counted compared to closer pixels). Fourth, we multiply the IDW with the population density and calculate the mean. This results in a viewshed and distance weighted population density (high values indicate more people living close by the wind turbine) Finally, we do the same for the infrastructure (since combination of infrastructure is preferable, dense and close by infrastructure gets higher values where as less dense and more distant settings gets lower values).
 ```{python}
 import arcpy
+import os
 import numpy as np
 from arcpy import env
 from arcpy.sa import IsNull
@@ -198,20 +201,40 @@ arcpy.CheckOutExtension("Spatial")
 # Set overwrite option
 arcpy.env.overwriteOutput = True
 
-DEM = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/200_DEM.tif'
+DEM = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/200_DEM.tif'
 
-INFRA= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/INFRA.tif'
+INFRA= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/INFRA_clip.tif'
 
-POP_DENS= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/pop_dens_200.tif'
+POP_DENS= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/pop_dens_clip.tif'
+COHER= 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/COHER.tif'
+
 arcpy.env.extent = POP_DENS
 
 POP_DENS=arcpy.sa.Int(POP_DENS)
 INFRA=arcpy.sa.Int(INFRA)
 
-inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/test10.shp'
+inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/inpoints.shp'
 
-arcpy.MakeFeatureLayer_management(inpoints, "pts_lyr")
-with arcpy.da.SearchCursor('pts_lyr', ['PU_ID','LT']) as cursor:
+
+
+# ouput workspace and name for viewshed  
+outputWS = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/out/view'  
+prefixVS = 'Viewshed'  
+arcpy.env.workspace = outputWS  
+arcpy.env.overwriteOutput = True  
+
+
+
+arcpy.MakeFeatureLayer_management(inpoints, 'pts_lyr')
+#add three fields
+arcpy.AddField_management ('pts_lyr', "VIS_AREA", "DOUBLE")
+arcpy.AddField_management ('pts_lyr', "VIS_IMPACT", "DOUBLE")
+arcpy.AddField_management ('pts_lyr', "VIS_INFRA", "DOUBLE")
+arcpy.AddField_management ('pts_lyr', "VIS_POP", "DOUBLE")
+arcpy.AddField_management ('pts_lyr', "COHER_AREA", "DOUBLE")
+
+with arcpy.da.UpdateCursor('pts_lyr', ['PU_ID','LT','VIS_AREA','VIS_IMPACT','VIS_INFRA','VIS_POP','COHER_AREA']) as cursor:
+
    for row in cursor:
    
       fid = str(row[0])  ### Must be string
@@ -220,61 +243,87 @@ with arcpy.da.SearchCursor('pts_lyr', ['PU_ID','LT']) as cursor:
       arcpy.SelectLayerByAttribute_management("pts_lyr", "NEW_SELECTION", '"PU_ID" = {}'.format(fid))
       
 
-#set the parameters for the viewshed according to the WT_model
+# define output name (of oid = 1, raster will be called Viewshed1  
+      outVSname = outputWS + os.sep + prefixVS + str(fid)  
+  
+#set the parameters for the viewshed according to the WT_model according to P.Mattla 2020 and Wrozynski 2016
 
 
       if lt==1:
         #V150
-        print(fid," this is a V150 in landscape nr.",lt)
+        #print(fid," this is a V150 in landscape nr.",lt)
         obs_offset = 150
-        outer_rad = 33000
+        outer_rad = 16000
            
       
       elif lt==2:
         print(fid, " this is an E82 in landscape nr." ,lt)
         obs_offset = 100
-        outer_rad = 15000
+        outer_rad = 11000
             
       else:
         print(fid, " this is an E138 in landscape nr." ,lt)
         obs_offset = 125
-        outer_rad = 20000
+        outer_rad = 14000
       
-      outViewshed = arcpy.Viewshed2_3d(in_raster=DEM, in_observer_features="pts_lyr", surface_offset=1.5, observer_offset=obs_offset, outer_radius=outer_rad,  refractivity_coefficient=0.13)
+      outViewshed = arcpy.Viewshed2_3d(DEM, 'pts_lyr', outVSname,  surface_offset=1.5, observer_offset=obs_offset, outer_radius=outer_rad,  refractivity_coefficient=0.13)
       outViewshed = arcpy.sa.Int(outViewshed)
-      
-              # determine number of visible cells  
+    
+      # determine number of visible cells  
       myArray = arcpy.RasterToNumPyArray(outViewshed)  
       visPixels = myArray.sum()  
-      print(visPixels)
-  
-      # update value in point featureclass  
-     
+      #print(visPixels)
       del myArray
       
-      ECLE = arcpy.sa.EucDistance("pts_lyr", 10000, 200)
-
-      IDW = outViewshed * 1/ECLE
+      #create the euclidean distance up to the outer radius with the same pixel size
+      ECLE = arcpy.sa.EucDistance("pts_lyr", outer_rad, 200)
+      #The IDW represents an approximation of the visual impact, since only visual pixel are counted and weighted less with increasing distance
+      IDW = outViewshed * (1/ECLE)*outer_rad
+      myArray3 = arcpy.RasterToNumPyArray(IDW) 
+      myArray3[np.where(myArray3<0)]=0
+      visIMPACT = myArray3.mean() 
+      del myArray3
 
       outINFRA = IDW * INFRA
       myArray1 = arcpy.RasterToNumPyArray(outINFRA)  
       myArray1[np.where(myArray1 <0)]=0
-      visINFRA = myArray1.sum() 
-      print(visINFRA)
+      visINFRA = myArray1.mean() 
+      #print(visINFRA)
+      del myArray1
       
-      outPOPdens=IDW * POP_DENS
+      outPOPdens = IDW * POP_DENS
       myArray2 = arcpy.RasterToNumPyArray(outPOPdens)  
       myArray2[np.where(myArray2 <0)]=0
-      visPop = myArray2.sum() 
-      print(visPop)
+      visPop = myArray2.mean() 
+      del myArray2
       
-     # outINFRA.save(
+      outCOHER=IDW * COHER
+      myArray5 = arcpy.RasterToNumPyArray(outCOHER)  
+      myArray5[np.where(myArray5 <0)]=0
+      visCOHER = myArray5.mean() 
+      
+      del myArray5
+      
+      
+        # update value in point featureclass
+      
+      row[2]=visPixels
+      row[3]=visIMPACT
+      row[5]=visPop
+      row[4]=visINFRA
+      row[6]=visCOHER
+      cursor.updateRow(row)
+      arcpy.SelectLayerByAttribute_management("pts_lyr", "CLEAR_SELECTION")
+      #print(fid)
+      
+      #outINFRA.save(
       #"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/infra/IDW_INFRA" +fid+".tif")
       #IDW.save("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/idw/IDW" +fid+".tif")
       #outPOPdens.save(
       #"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/pop_dens/IDW_POP" +fid+".tif")
-      
-   
+     
+arcpy.FeatureClassToShapefile_conversion('pts_lyr', "D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/out")      
+del row    
 arcpy.CheckInExtension("3D")
 arcpy.CheckInExtension("Spatial")
 ```
