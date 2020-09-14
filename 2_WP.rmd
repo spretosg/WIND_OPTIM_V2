@@ -180,9 +180,10 @@ use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
 #Import arcpy
 arcpy <- import("arcpy")
 
-test1<-test[c(1:10),]
-test1<-st_as_sf(test)
-st_write(test1,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis", "view_inpoints",driver = "ESRI shapefile",overwrite=T)
+test1<-test[c(6001:8818),]
+test2<-test[c(3001:8818),]
+test1<-st_as_sf(test1)
+st_write(test1,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis", "view_inpoints1",driver = "ESRI shapefile",overwrite=T)
 ```
 
 
@@ -213,13 +214,13 @@ arcpy.env.extent = POP_DENS
 POP_DENS=arcpy.sa.Int(POP_DENS)
 INFRA=arcpy.sa.Int(INFRA)
 
-inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/inpoints.shp'
+inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/View_inpoints1.shp'
 
 
 
 # ouput workspace and name for viewshed  
 outputWS = 'D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/out/view'  
-prefixVS = 'Viewshed'  
+prefixVS = 'Vie'  
 arcpy.env.workspace = outputWS  
 arcpy.env.overwriteOutput = True  
 
@@ -322,7 +323,7 @@ with arcpy.da.UpdateCursor('pts_lyr', ['PU_ID','LT','VIS_AREA','VIS_IMPACT','VIS
       #outPOPdens.save(
       #"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test/out/pop_dens/IDW_POP" +fid+".tif")
      
-arcpy.FeatureClassToShapefile_conversion('pts_lyr', "D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/out")      
+arcpy.FeatureClassToShapefile_conversion('pts_lyr',"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/out")      
 del row    
 arcpy.CheckInExtension("3D")
 arcpy.CheckInExtension("Spatial")
@@ -346,8 +347,33 @@ In the next part we assign the distance in meters between the points which are t
 *rivers (dist_riv)
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
+cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_fin_200831.shp")
+cen$VIS_HA<-cen$VIS_AREA*4
+cen$ENER_DENS_MWha<-cen$prod_MW/cen$VIS_HA
+cen$EXPL<-cen$dist_str+cen$dist_PL
+
+tmp_cen<-as(cen,"Spatial")
+pgInsert(con,c("WT_PU_HEX","WT_pts_WP2_200831"),tmp_cen)
+
+require(reshape2)
+#wide to long for all distance measures
+df_cen<-as.data.frame(cen)
+melt.pts<-melt(df_cen[c(4,7:25,27:31,33:35)])
+
+#histogram of all variables
+ggplot(data = melt.pts, aes(x = value)) + 
+geom_histogram() + 
+facet_wrap(~variable, scales = "free")
+
 ```
+##Map two of the optimization goals
+Here we map the distribution of the wind energy per visible HA of the turbine and the exploitation index.
+```{r}
+
+```
+
+
+
 
 # further spatial checks    
 Finally we need to know for each point the Infrastructure density, the noise level and the landscape coherence

@@ -63,7 +63,7 @@ crs(dem_200)
 ```
 
 
-Subsequently, the airdensity (p) is approximated with the following formula, where x represents the meters a s.l. from the DEM.
+Subsequently, the air density (p) is approximated with the following formula, where x represents the meters above s.l. from the DEM.
 ```{r}
 airdens <- function(x) { 1.247015*exp(-0.000104*x) }
 
@@ -160,9 +160,6 @@ pow_curve<-dbReadDataFrame(con,c("wind_input","pow_curve"))
 The funtions "tot" take the airdensity, the efficency parameter cp, the mean wind speed for i intervalls and the two site specific weibull parameters A and k as inputs. In a loop between 0 and 30 all probabilities that the wind speeds will occur according to the specific weibull distribution is calculated and multiplied by the total amount of hours per year.
 
 ```{r}
-cur_dat<-Sys.Date()
-outpath<-"intermediate_steps/1_wp/pot_ener_CH"
-
 #125 meters above ground with E138-4.2 power curve (67m radius) with an efficiency parameter of 0.8 (mail philipp 12.5.20)
 fun_totE138<-function(airdens_200,cpe138,i,k,A){0.8*(0.5*(airdens_200*(67^2*pi)*i^3)*cpe138)/1000*(k/A*((i/A)^(k-1))*exp(1)^(-(i/A)^(k)))*8760}
 
@@ -188,7 +185,7 @@ for(i in 1:29){
   WEA_pow <-overlay(rSTACK, fun=fun_totE82, unstack=TRUE)
   WEA_pow_tot100<-WEA_pow_tot100+WEA_pow
 }
-#rel_diff_PEPP<-(WEA_pow_tot100/WEA_pow_tot125)
+
 
 #150 meters above ground with V150-4.2 power curve (73m radius) with an efficiency parameter of 0.8 (mail philipp 12.5.20)
 fun_totV150<-function(airdens_200,cpV150,i,k,A){0.8*(0.5*(airdens_200*(73^2*pi)*i^3)*cpV150)/1000*(k/A*((i/A)^(k-1))*exp(1)^(-(i/A)^(k)))*8760}
@@ -205,17 +202,56 @@ for(i in 1:29){
 
 
 
-par(mfrow=c(2,2))
-mapview(WEA_pow_tot125, alpha.regions = 0.8)
-mapview(WEA_pow_tot100, alpha.regions = 0.8)
-mapview(WEA_pow_tot150, alpha.regions = 0.8)
 
-
-writeRaster(WEA_pow_tot125/1000,filename=paste(outpath,paste(cur_dat,"E138_200_MWH.tif",sep="_"),sep = "/"),overwrite=T)
-writeRaster(WEA_pow_tot100/1000,filename=paste(outpath,paste(cur_dat,"E82_200MWH.tif",sep="_"),sep = "/"),overwrite=T)
-writeRaster(WEA_pow_tot150/1000,filename=paste(outpath,paste(cur_dat,"V150_200MWH.tif",sep="_"),sep = "/"),overwrite=T)
 
 ```
+
+## icing losses
+
+```{r}
+# import the BFE ACII grid showing the days for expected icing
+#from sp
+icing<-read.asciigrid("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/wind_weibull/icing/gridascii_ice_ch.txt")
+mapview(icing)
+
+raster_ice<-raster(icing)
+res_icing<-resample(raster_ice, dem_200, method="bilinear")
+
+# reclass it to a loss raster (appendix in paper)
+
+#day*0.25
+res_icing<-(1-0.25*res_icing/100)
+
+#to check where the "big" losses occur
+plot(res_icing)
+
+#multiply the production raster with the icing losses and /1000 in order to rach MwH
+MwH_100m_fin<-WEA_pow_tot100/1000*res_icing
+MwH_125m_fin<-WEA_pow_tot125/1000*res_icing
+MwH_150m_fin<-WEA_pow_tot150/1000*res_icing
+
+#multiply the loss raster with the energy rasters
+
+
+```
+
+
+## total energy production per model per gridcell
+```{r}
+par(mfrow=c(2,2))
+mapview(MwH_150m_fin, alpha.regions = 0.8)
+mapview(MwH_100m_fin, alpha.regions = 0.8)
+mapview(MwH_125m_fin, alpha.regions = 0.8)
+
+cur_dat<-Sys.Date()
+outpath<-"intermediate_steps/1_wp/pot_ener_CH"
+
+writeRaster(MwH_100m_fin,filename=paste(outpath,paste(cur_dat,"E138_200_MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
+writeRaster(MwH_125m_fin,filename=paste(outpath,paste(cur_dat,"E82_200MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
+writeRaster(MwH_150m_fin,filename=paste(outpath,paste(cur_dat,"V150_200MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
+```
+
+
 For the total area of Switzerland, the V112-3.0 provides around 1500 TWh of physical potential energy. Including the Specific wind distribution, the height dependent air density and the turbine parameters. In 2012, meteotest assessed the physical wind energy potential for Switzerland for the BAFU (Cattin, 2012). They calculated about 4800 TWh of PEPP, but used an optimal rotor performance of 0.59. Our results are much closer to what a specific wind turbine can produce since we considered cp's according to the power curve between 0.2 and 0.4. 
 
 # Create a hexagonal grids
