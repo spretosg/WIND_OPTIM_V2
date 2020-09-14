@@ -270,21 +270,21 @@ mapview(boundary)
 #create hexagonal grids with the corresponding cellsizes (hexagon formula d2)
 ###E138
 
-PU_E138<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 700, square = FALSE)
+PU_E138<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 700, square = FALSE, crs = crs(boundary))
 PU_E138<-st_as_sf(PU_E138)
 PU_E138$PU_ID<-c(1:nrow(PU_E138))
 
 hex_cenE138<-as(st_centroid(PU_E138),"Spatial")
 
 ### E82
-PU_E82<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 500, square = FALSE, crs = "+init=epsg:21781")
+PU_E82<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 500, square = FALSE, crs = crs(boundary))
 PU_E82<-st_as_sf(PU_E82)
 PU_E82$PU_ID<-c(1:nrow(PU_E82))
 hex_cenE82<-as(st_centroid(PU_E82),"Spatial")
 
 
 ####V150
-PU_V150<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 900, square = FALSE, crs = "+init=epsg:21781")
+PU_V150<-st_make_grid(st_as_sfc(st_bbox(boundary)), what = "polygons", cellsize = 900, square = FALSE, crs = crs(boundary))
 PU_V150<-st_as_sf(PU_V150)
 PU_V150$PU_ID<-c(1:nrow(PU_V150))
 hex_cenV150<-as(st_centroid(PU_V150),"Spatial")
@@ -308,37 +308,46 @@ The three different wind turbine models should be located in three specific regi
 
 #import CH boundary to clip points
 LT<-raster("input_data/BIOG_REG/LT3_rast1.tif")
-LT<-projectRaster(LT, crs="+init=epsg:21781")
+LT<-projectRaster(LT, crs= crs(boundary))
+mapview(LT)
 
-WEA_pow_tot150<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_V150_200MWH.tif")
-WEA_pow_tot125<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-05-12_E138_200MWH.tif")
-WEA_pow_tot100<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-08-23_E82_200MWH.tif")
+#if needed the hex centroids of each model (see above)
+hex_cenV150<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_V150"))
+hex_cenE82<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_E82"))
+hex_cenE138<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_E138"))
+#if needed the production raster (see above)
+MwH_150m_fin<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-09-14_V150_200MWH_ice.tif")
+MwH_150m_fin<-projectRaster(MwH_150m_fin, crs= crs(dem_200))
+MwH_125m_fin<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-09-14_E138_200_MWH_ice.tif")
+MwH_125m_fin<-projectRaster(MwH_125m_fin, crs= crs(dem_200))
+MwH_100m_fin<-raster("intermediate_steps/1_wp/pot_ener_CH/2020-09-14_E82_200MWH_ice.tif")
+MwH_100m_fin<-projectRaster(MwH_100m_fin, crs= crs(dem_200))
 
 hex_cenV150$LT<-extract(LT,hex_cenV150)
 hex_cenE138$LT<-extract(LT,hex_cenE138)
 hex_cenE82$LT<-extract(LT,hex_cenE82)
 
-hex_cenV150$prod_MW<-extract(WEA_pow_tot150/1000,hex_cenV150, fun=mean, buffer= 450)
-hex_cenE138$prod_MW<-extract(WEA_pow_tot125/1000,hex_cenE138,fun=mean, buffer= 350)
-hex_cenE82$prod_MW<-extract(WEA_pow_tot100/1000,hex_cenE82,fun=mean, buffer= 250)
+mapview(hex_cenE138,zcol=hex_cenE138$LT)
 #select only the appropriate sites for the WEA
-hex_cenV150_sel<-subset(hex_cenV150,LT==1,)
-hex_cenE82_sel<-subset(hex_cenE82,LT==2,)
-hex_cenE138_sel<-subset(hex_cenE138,LT==3,)
+hex_cenV150_sel<-subset(hex_cenV150,LT==1)
+hex_cenE82_sel<-subset(hex_cenE82,LT==2)
+hex_cenE138_sel<-subset(hex_cenE138,LT==3)
+
+#extract the MWh values for each turbine model
+hex_cenV150_sel$prod_MW<-extract(MwH_150m_fin,hex_cenV150_sel, fun=mean, buffer= 450)
+hex_cenE138_sel$prod_MW<-extract(MwH_125m_fin,hex_cenE138_sel,fun=mean, buffer= 350)
+hex_cenE82_sel$prod_MW<-extract(MwH_100m_fin,hex_cenE82_sel,fun=mean, buffer= 250)
+
 
 #combine
 cen_all<-rbind(hex_cenV150_sel,hex_cenE82_sel,hex_cenE138_sel)
-pgInsert(con,c("WT_PU_HEX","cen_all_200825"),cen_all)
+#here we give a unique WT ID
+cen_all$WT_ID<-c(1:nrow(cen_all))
+pgInsert(con,c("WT_PU_HEX","cen_all_200914"),cen_all, overwrite = T)
 
-mapview(cen_all,zcol = "LT", burst = TRUE)
+mapview(cen_all,zcol = "LT")
 
 ```
-Interestingly, the selection based on LT produces some holes (not many) anyway, we therefore exported the hex_cenXY to arcmap and combined the layers there to one single layer cen_all
-
-# Hexagonal points from Egli et a., 2017
-
- Hexagons with further informations (Egli et al. 2017)
-Egli et al., 2017 calculated in a hexagonal grid further site specific values. The goal of this section is to compare the MAX wind value from Egli et al., 2017 with our calculated PEPP. (LT-1 = Mittelland, Lt2= Alpen, LT3 = Voralpen )
 
 
 ```{r}
