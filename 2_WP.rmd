@@ -32,7 +32,7 @@ con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", 
 
 ## Description of WP 2
 
-This workpackages describes the exclusion of sites for wind energy production. Firstly, we exclude sites which are technically not feasible to develop. Secondly, we consider only sites which are outside "hard" restricted areas.  
+This workpackage describes the exclusion of sites for wind energy production. Firstly, we exclude sites which are technically not feasible to develop. Secondly, we consider only sites which are outside "hard" restricted areas.  
 
 # Slope
 We assign the slope to the all the centroids and remove the points which have a slope <11.4 degrees = 20%. 
@@ -45,13 +45,13 @@ slope<-terrain(dem_200, opt="slope", unit="degrees", neighbors=8)
 #mapview(slope)
 
 #import all centroids from WP1
-cen_all<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_all_2020-08-25"))
-cen_all<-spTransform(cen_all,crs(dem_200))
-pgInsert(con,c("WT_PU_HEX","cen_all_LV03"),cen_all)
-test<-pgGetGeom(con,c("WT_PU_HEX","WT_PTS_LV03_200827"))
+cen_all<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_all_200914_LV03"))
+
+
 
 #assign slope and remove the sites with too steep slopes
 cen_all$slope<-extract(slope,cen_all)
+#mapview(cen_sub, zcol="slope")
 cen_all<-subset(cen_all,slope<11.4)
 ```
 
@@ -73,101 +73,162 @@ rest_area<-st_as_sf(rest_area)
 
 cen_all<-st_as_sf(cen_all)
 
-cen_all = st_join(cen_all, rest_area["OBJEKTART"], left=T)
-#and just keep the points which are not (na) in a specific area
+start<-Sys.time()
+cen_all <- st_join(cen_all, rest_area["OBJEKTART"], left=T)
+end<-Sys.time()
+end-start
+mapview(cen_all,zcol="OBJEKTART")
+#and just keep the points which are not (==NA) in a specific area
 cen_all<-filter(cen_all,is.na(cen_all$OBJEKTART))
+
+```
+#Infrastructure
+Additionally, we remove all the points which are within No building zones , airport zones , streets (+50m), military areas and  railway lines (+50m).
+
+```{r}
+#not within building zones
+BZ = st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/HARD_CONSTR/BAUZONE/ch_are_bauzonen.shp")
+
+BZ<-as(st_zm(BZ),"Spatial")
+#create a raster after transforming into the new CRS
+BZ<-spTransform(BZ,crs(cen_all))
+BZ<-st_as_sf(BZ)
+
+start<-Sys.time()
+cen_all <- st_join(cen_all, BZ["CH_BEZ_D"], left=T)
+end<-Sys.time()
+end-start
+
+#and just keep the points which are not (==NA) in a specific area
+cen_all<-filter(cen_all,is.na(cen_all$CH_BEZ_D))
+
+
+#not within airport zones
+air<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/GRUND_AUSSCHL/SIL/SIL.shp")
+air<-as(st_zm(air),"Spatial")
+#create a raster after transforming into the new CRS
+air<-spTransform(air,crs(cen_all))
+air<-st_as_sf(air)
+
+start<-Sys.time()
+cen_all <- st_join(cen_all, air["Objektart"], left=T)
+end<-Sys.time()
+end-start
+
+#and just keep the points which are not (==NA) in a specific area
+cen_all<-filter(cen_all,is.na(cen_all$Objektart))
+
+
+#within military areas
+mil<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/GRUND_AUSSCHL/MIL/MIL.shp")
+mil<-as(st_zm(mil),"Spatial")
+#create a raster after transforming into the new CRS
+mil<-spTransform(mil,crs(cen_all))
+mil<-st_as_sf(mil)
+
+start<-Sys.time()
+cen_all <- st_join(cen_all, mil["FACILITY"], left=T)
+end<-Sys.time()
+end-start
+
+#and just keep the points which are not (==NA) in a specific area
+cen_all<-filter(cen_all,is.na(cen_all$FACILITY))
+
 cen_all<-as(cen_all,"Spatial")
-mapview(cen_all)
-pgInsert(con,c("WT_PU_HEX","cen_all_LC"),cen_all)
 
-cen<-pgGetGeom(con,c("WT_PU_HEX","cen_all_LC"))
-cen<-st_as_sf(cen)
-st_write(cen,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps", "cen_lc",driver = "ESRI shapefile")
+st_write(cen_all[1:4],"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/PU", "cen_infra_200915",driver = "ESRI shapefile")
 
-tmp_pts = st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/tmp_re18.shp")
-tmp_pts<-tmp_pts[ -23] 
-names(tmp_pts)[23]<-"dist_WHZ"
-st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps", "tmp_re18",driver = "ESRI shapefile",overwrite=F)
+pgInsert(con,c("WT_PU_HEX","cen_infra_200915"),cen_all[1:4])
+
 
 ```
 
-#Further infrastructure
+# National protected areas without any possibilities to build wind turbines
+We further remove WT locations within mitigation and water bird areas, national parks and wetlands of national interest
 
-Additionally, we remove all the points which are within No building zones (+300m), airport zones (+4000m), streets (+50m) and  railway lines (+50m). 
+```{r}
+cen_all<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/PU/cen_infra_200915_fin.shp")
+#wetlands
+wet<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/HARD_CONSTR/MOORE/moore_merge.shp")
+wet<-as(st_zm(wet),"Spatial")
+#create a raster after transforming into the new CRS
+wet<-spTransform(wet,crs(cen_all))
+wet<-st_as_sf(wet)
 
-```{r pressure, echo=FALSE}
+start<-Sys.time()
+cen_all <- st_join(cen_all, wet["ObjNummer"], left=T)
+end<-Sys.time()
+end-start
 
-#some statistics
-install.packages("reshape2")
-require(reshape2)
-#wide to long for all distance measures
-df_pts<-as.data.frame(tmp_pts)
-melt.pts<-melt(df_pts[c(7:12,14:23)])
+#and just keep the points which are not (==NA) in a specific area
+cen_all<-filter(cen_all,is.na(cen_all$ObjNummer))
 
-#histogram of all variables
-ggplot(data = melt.pts, aes(x = value)) + 
-geom_histogram() + 
-facet_wrap(~variable, scales = "free")
+#nationalpark
 
+park<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/HARD_CONSTR/PAERKE/N2020_Revision_Park_Perimeter20200101.shp")
+park<-as(st_zm(park),"Spatial")
+#create a raster after transforming into the new CRS
+park<-spTransform(park,crs(cen_all))
+park<-st_as_sf(park)
 
+start<-Sys.time()
+cen_all <- st_join(cen_all, park["Name"], left=T)
+end<-Sys.time()
+end-start
 
-tmp_pts<-subset(tmp_pts,dist_WHZ>300)
-tmp_pts<-subset(tmp_pts,dist_air>4000)
-tmp_pts<-subset(tmp_pts,dist_str>50)
-tmp_pts<-subset(tmp_pts,dist_rail>50)
+#and just keep the points which are not (==NA) in a specific area
+cen_all<-filter(cen_all, cen_all$Name  != "Schweizerischer Nationalpark" | is.na(cen_all$Name))
+
+#birds
+bird<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/HARD_CONSTR/BIRDS/wasserzugvogel.shp")
+bird<-as(st_zm(bird),"Spatial")
+#create a raster after transforming into the new CRS
+bird<-spTransform(bird,crs(cen_all))
+bird<-st_as_sf(bird)
+
+start<-Sys.time()
+cen_all <- st_join(cen_all, bird["Teilgebiet"], left=T)
+end<-Sys.time()
+end-start
+
+#and just keep the points which are not (==NA) in a specific area
+cen_all<-filter(cen_all,is.na(cen_all$Teilgebiet))
+
+cen_all<-st_as_sf(cen_all)
+
+st_write(cen_all,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/PU", "cen_fin_200915_4",driver = "ESRI shapefile", overwrite=T)
+
+pgInsert(con,c("WT_PU_HEX","cen_fin_200915"),cen_all[4:7], overwrite = T)
+cen_all<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_fin_200915"))
 
 ```
 
-
-#Federal landscape and nature protection
-
-Finally, points within Swiss Nationalparks and protected marshes will be also excluded. (dist_leag)
-
-```{r pressure, echo=FALSE}
-tmp_pts<-subset(tmp_pts,dist_LEAG>0)
-
-#check where these points are and how much the WT might produce
-pal<-mapviewPalette("mapviewSpectralColors")
-mapview(tmp_pts, col.regions=pal(100), zcol=c("prod_MW")) 
-```
 
 # Further attributes
 We attach meters above sea level (msl), the surrounding noise of the wt (noise) and the binary variable fff (1=in fff 0=not in fff) to all points.
 
 ```{r}
-tmp_pts$msl<-extract(dem_200,tmp_pts)
+tmp_pts<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_FIN_200915_2.shp")
+
+tmp_pts$ALTI<-extract(dem_200,tmp_pts)
 
 
-noise<-raster("input_data/constr/StrassenLaerm_Tag.tif")
+noise<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/FURTHER_CONSTR/StrassenLaerm_Tag.tif")
 noise[is.na(noise[])] <- 0
-tmp_pts$noise<-extract(noise,tmp_pts, buffer= 600, fun=mean)
+tmp_pts$NOISE<-extract(noise,tmp_pts, buffer= 600, fun=mean)
 
 ##statistics about the street noise around the WT's
-ggplot(data = tmp_pts, aes(x = noise)) + 
+ggplot(data = tmp_pts, aes(x = NOISE)) + 
 geom_histogram()
 
-FFF<-raster("input_data/constr/FFF_proj.tif")
+FFF<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/input_data/constr/FURTHER_CONSTR/FFF_proj.tif")
 FFF[is.na(FFF[])] <- 0
 tmp_pts$FFF<-extract(FFF,tmp_pts)
 ggplot(data = tmp_pts, aes(x = FFF)) + 
 geom_bar()
 
-BEV<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/BEVÖLKERUNG/bev_200.tif")
-BEV[is.na(BEV[])] <- 0
-crs(BEV)<-"+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1 +x_0=2600000 +y_0=1200000 +ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs"
 
 
-BEV<-projectRaster(BEV, dem_200)
-crs(BEV)
-writeRaster(BEV,"test/pop_dens_200.tif")
-
-mapview(BEV)
-#insert the 8800 pts into the database and store it as shp file
-tmp_pts<-as(tmp_pts,"Spatial")
-pgInsert(con,c("WT_PU_HEX","WT_pts_fin_200827"),tmp_pts)
-st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/test", "all_pts",driver = "ESRI shapefile",overwrite=T)
-
-#replace NA's with 0 to indicate that the 
 
 ```
 
@@ -182,8 +243,9 @@ arcpy <- import("arcpy")
 
 test1<-test[c(6001:8818),]
 test2<-test[c(3001:8818),]
-test1<-st_as_sf(test1)
-st_write(test1,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis", "view_inpoints1",driver = "ESRI shapefile",overwrite=T)
+tmp_pts<-st_as_sf(tmp_pts)
+tmp_pts<-as(st_zm(tmp_pts),"Spatial")
+st_write(tmp_pts,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis", "view_inpoints",driver = "ESRI shapefile",overwrite=T)
 ```
 
 
@@ -214,7 +276,7 @@ arcpy.env.extent = POP_DENS
 POP_DENS=arcpy.sa.Int(POP_DENS)
 INFRA=arcpy.sa.Int(INFRA)
 
-inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/View_inpoints1.shp'
+inpoints='D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/viewshed_analysis/View_inpoints.shp'
 
 
 
@@ -267,7 +329,7 @@ with arcpy.da.UpdateCursor('pts_lyr', ['PU_ID','LT','VIS_AREA','VIS_IMPACT','VIS
         obs_offset = 125
         outer_rad = 14000
       
-      outViewshed = arcpy.Viewshed2_3d(DEM, 'pts_lyr', outVSname,  surface_offset=1.5, observer_offset=obs_offset, outer_radius=outer_rad,  refractivity_coefficient=0.13)
+      outViewshed = arcpy.Viewshed2_3d(DEM, 'pts_lyr',   surface_offset=1.5, observer_offset=obs_offset, outer_radius=outer_rad,  refractivity_coefficient=0.13)
       outViewshed = arcpy.sa.Int(outViewshed)
     
       # determine number of visible cells  
@@ -331,26 +393,15 @@ arcpy.CheckInExtension("Spatial")
 
 
 
-##Distance measures
 
-In the next part we assign the distance in meters between the points which are technically possible (N=13'112) and the
-*Forests (dist_for)
-*Building zone (dist_BZ)
-*Streets and Powerlines (Exploitation) (dist_street, dist_PL)
-*BLN (dist_BLN)
-*UNESCO (dist_UNESCO)
-*ISOS (dist_ISOS)
-*flood plains (dist_flood)
-*DEER protection areas (dist_JB)
-*Dry meadows (dist_MEAD)
-*Bird protection areas (dist_bird)
-*rivers (dist_riv)
 
 ```{r pressure, echo=FALSE}
-cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_fin_200831.shp")
+cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_FIN_200916.shp")
 cen$VIS_HA<-cen$VIS_AREA*4
 cen$ENER_DENS_MWha<-cen$prod_MW/cen$VIS_HA
-cen$EXPL<-cen$dist_str+cen$dist_PL
+cen$EXPL<-cen$DIST_STRE+cen$DIST_PL
+st_write(obj = cen, dsn = con, Id(schema="WT_PU_HEX", table="CEN_FIN_200916"))
+
 
 tmp_cen<-as(cen,"Spatial")
 pgInsert(con,c("WT_PU_HEX","WT_pts_WP2_200831"),tmp_cen)
@@ -358,7 +409,7 @@ pgInsert(con,c("WT_PU_HEX","WT_pts_WP2_200831"),tmp_cen)
 require(reshape2)
 #wide to long for all distance measures
 df_cen<-as.data.frame(cen)
-melt.pts<-melt(df_cen[c(4,7:25,27:31,33:35)])
+melt.pts<-melt(df_cen[c(3,5:34)])
 
 #histogram of all variables
 ggplot(data = melt.pts, aes(x = value)) + 
@@ -366,14 +417,41 @@ geom_histogram() +
 facet_wrap(~variable, scales = "free")
 
 ```
-##Map two of the optimization goals
-Here we map the distribution of the wind energy per visible HA of the turbine and the exploitation index.
+## Exclusion, reserve and other areas
+According to the Swiss wind energy strategy, we add the information whether a location falls into the exclusion, the reserve or the other area (0=outside, 1=inside)
+
 ```{r}
+for(i in 1:nrow(cen)){
+
+  cen$count_rest[i]<- (cen$in_bln[i]+ cen$in_forest[i]+ cen$in_fff[i]+  cen$in_biosph[i]+   cen$in_birds[i]+cen$in_drymead[i]+cen$isos_buffe[i]+ cen$isos_kern[i]+ cen$in_deer[i]+ cen$unesco_buf[i]+ cen$unesco_cor[i])
+  
+  if(cen$DIST_BLN[i]>1 | cen$DIST_UNE_N[i]>1| cen$DIST_UNE_K[i]>1 |  cen$DIST_MEAD[i]>1 | cen$in_birds[i]==1| cen$in_drymead[i]==1 | cen$isos_buffe[i]==1| cen$isos_kern[i]==1|cen$in_deer[i]==1|cen$unesco_buf[i]==1|cen$unesco_cor[i]==1)
+    cen$other[i]<-0
+  else
+    cen$other[i]<-1
+}
+cen$in_EXCL<-i
 
 ```
 
 
 
+```{r pressure, echo=FALSE}
 
-# further spatial checks    
-Finally we need to know for each point the Infrastructure density, the noise level and the landscape coherence
+#some statistics
+install.packages("reshape2")
+require(reshape2)
+#wide to long for all distance measures
+df_pts<-as.data.frame(tmp_pts)
+melt.pts<-melt(df_pts[c(7:12,14:23)])
+
+#histogram of all variables
+ggplot(data = melt.pts, aes(x = value)) + 
+geom_histogram() + 
+facet_wrap(~variable, scales = "free")
+
+
+
+```
+
+
