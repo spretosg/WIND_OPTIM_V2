@@ -24,6 +24,7 @@ require(RPostgreSQL)
 require(rpostgis)
 require(mapview)
 require(reticulate)
+require(tmap)
 
 con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
@@ -204,11 +205,13 @@ cen_all<-pgGetGeom(conn = con,name = c("WT_PU_HEX","cen_fin_200915"))
 ```
 
 
-# Further attributes
+# Further attributes and somebasic statistics
 We attach meters above sea level (msl), the surrounding noise of the wt (noise) and the binary variable fff (1=in fff 0=not in fff) to all points.
 
 ```{r}
 tmp_pts<-st_read(dsn="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_FIN_200915_2.shp")
+
+
 
 tmp_pts$ALTI<-extract(dem_200,tmp_pts)
 
@@ -397,41 +400,84 @@ arcpy.CheckInExtension("Spatial")
 
 ```{r pressure, echo=FALSE}
 cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_FIN_200916.shp")
-cen$VIS_HA<-cen$VIS_AREA*4
-cen$ENER_DENS_MWha<-cen$prod_MW/cen$VIS_HA
+
 cen$EXPL<-cen$DIST_STRE+cen$DIST_PL
-st_write(obj = cen, dsn = con, Id(schema="WT_PU_HEX", table="CEN_FIN_200916"))
+pgInsert(obj = cen, dsn = con, Id(schema="WT_PU_HEX", table="CEN_FIN_200916"))
 
-
-tmp_cen<-as(cen,"Spatial")
-pgInsert(con,c("WT_PU_HEX","WT_pts_WP2_200831"),tmp_cen)
+cen<-pgGetGeom(conn=con,name = c("WT_PU_HEX","CEN_FIN_200916"))
+bound<-pgGetGeom(conn=con,name = c("GEO_base_data","CH_boundaries"))
 
 require(reshape2)
 #wide to long for all distance measures
 df_cen<-as.data.frame(cen)
-melt.pts<-melt(df_cen[c(3,5:34)])
+melt.pts<-melt(df_cen[c(3,5:32)])
 
-#histogram of all variables
+#histogram of exclusion areas variables
+df_cen<-as.data.frame(cen)
+melt.pts<-melt(df_cen[c(8,6,7,5,14,13,12,11)])
 ggplot(data = melt.pts, aes(x = value)) + 
 geom_histogram() + 
 facet_wrap(~variable, scales = "free")
 
+#histogram for noFocus areas variables
+df_cen<-as.data.frame(cen)
+melt.pts<-melt(df_cen[c(15,16,18)])
+ggplot(data = melt.pts, aes(x = value)) + 
+geom_histogram() + 
+facet_wrap(~variable, scales = "free")
+
+df_cen<-as.data.frame(cen)
+melt.pts<-melt(df_cen[c(3)])
+ggplot(data = melt.pts, aes(x = value)) + 
+geom_histogram() + 
+facet_wrap(~variable, scales = "free")
 ```
 ## Exclusion, reserve and other areas
 According to the Swiss wind energy strategy, we add the information whether a location falls into the exclusion, the reserve or the other area (0=outside, 1=inside)
 
 ```{r}
+#define the exclusion areas
+for(i in 1:nrow(cen)){
+   if(cen$DIST_BLN[i]<1  | cen$DIST_UNE_N[i]<1| cen$DIST_UNE_K[i]<1 |  cen$DIST_MEAD[i]<1 | cen$DIST_ISOS[i]<600| cen$DIST_FLOOD[i]<1| cen$DIST_VAEW[i]<1 | cen$DIST_MIL[i]<200 )
+     cen$IN_EXCL[i]<-1
+  else
+    cen$IN_EXCL[i]<-0
+}
+cen<-as(cen,"Spatial")
+mapview(subset(cen,cen$IN_EXCL==1))
+
+#define the exception areas
 for(i in 1:nrow(cen)){
 
-  cen$count_rest[i]<- (cen$in_bln[i]+ cen$in_forest[i]+ cen$in_fff[i]+  cen$in_biosph[i]+   cen$in_birds[i]+cen$in_drymead[i]+cen$isos_buffe[i]+ cen$isos_kern[i]+ cen$in_deer[i]+ cen$unesco_buf[i]+ cen$unesco_cor[i])
-  
-  if(cen$DIST_BLN[i]>1 | cen$DIST_UNE_N[i]>1| cen$DIST_UNE_K[i]>1 |  cen$DIST_MEAD[i]>1 | cen$in_birds[i]==1| cen$in_drymead[i]==1 | cen$isos_buffe[i]==1| cen$isos_kern[i]==1|cen$in_deer[i]==1|cen$unesco_buf[i]==1|cen$unesco_cor[i]==1)
-    cen$other[i]<-0
+   if(cen$DIST_UNE_N[i]<10000 & cen$DIST_UNE_N[i]>1 | cen$DIST_UNE_K[i]<10000 & cen$DIST_UNE_K[i]>1 |  cen$DIST_BIOS[i]<1 | cen$FFF[i]==1| cen$DIST_JB[i]<1| cen$DIST_FOR[i]<1 | cen$DIST_ISOS[i]<1500 & cen$DIST_ISOS[i]>600| cen$DIST_RAD[i]<20000)
+     cen$IN_RES[i]<-1
   else
-    cen$other[i]<-1
+    cen$IN_RES[i]<-0
+  
+  if(cen$IN_EXCL[i]==1)
+    cen$IN_RES[i]<-0
+  else
+    cen$IN_RES[i]<-cen$IN_RES[i]
 }
-cen$in_EXCL<-i
 
+#other areas
+for(i in 1:nrow(cen)){
+
+   if(cen$IN_EXCL[i]==0 & cen$IN_RES[i]==0  )
+     cen$IN_OTHER[i]<-1
+  else
+    cen$IN_OTHER[i]<-0
+}
+
+
+sum(nrow(subset(cen,cen$IN_EXCL==1)),nrow(subset(cen,cen$IN_RES==1)),nrow(subset(cen,cen$IN_OTHER==1)))
+
+pgInsert(con,c("WT_PU_HEX","CEN_FIN_200922"),cen)
+
+#cen<-pgGetGeom
+
+cen<-as(cen,"Spatial")
+mapview(subset(cen,cen$IN_EXCL==1))
 ```
 
 
