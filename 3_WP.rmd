@@ -52,19 +52,17 @@ This section defines the objectives as a function of x. While x is a binary vect
 ```{r helper functions}
 
 ener_dens<-function(x){
-    ener<-sum(x*cen$ENER_DENS)/sum(x)
-    return(ener)
-     }  
-
+  ener<-sum(x*cen$ENER_DENS)/sum(x)
+  return(ener)
+}  
 
 #counts the amount of WT in a model run
 amount_WT<-function(x){
   am_WT<-sum(x)
-return(am_WT)}
+  return(am_WT)
+}
 
-
-  
-# thats the clark evens index (the smaller the value below 0 the more clustered the data is)
+# The clark evens index (the smaller the value below 0 the more clustered the data is)
 cluster_fun<-function(x){
   cen$X<-x
   tmp<-subset(cen,X==1)
@@ -197,7 +195,7 @@ scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHE
   }
 
 #global NSGA2 settings
-MU = 80; LAMBDA = MU-5;  MAX.ITER =200
+MU = 80; LAMBDA = MU-5;  MAX.ITER =20000
  
 # Here we loop through all scenario files from the DB and calculate the optimization
 for(a in 1:nrow(scen_names)){
@@ -206,6 +204,7 @@ for(a in 1:nrow(scen_names)){
   #read out the points with the name of the name list at position a
   cen<-st_read(dsn = con, Id(schema="scenario", table = as.character(scen_names[a,])))
   cen<-as_Spatial(cen)
+  
   
   #the bounds are calculated to establish an initial population which can reach the energy target (we add +- 10% to    the boundaries)
   bound_up<-up_targ/sum(cen$prod_MW)+0.1*up_targ/sum(cen$prod_MW)
@@ -246,9 +245,11 @@ for(a in 1:nrow(scen_names)){
     ##Setting up the statistics HV   
     ref.point<-c(8,1000,1)
   
-    logger<-initLogger(ctrl,log.stats = list(fitness = list("HV"=list(fun=computeHV, pars = list(ref.point=ref.point)))),init.size = MAX.ITER+1L)
+    logger<-initLogger(ctrl,log.stats = list(fitness = list("HV"=list(fun=computeHV, pars = list(ref.point=ref.point)))),log.pop=T,init.size = MAX.ITER+1L)
     updateLogger(logger,population=population, fitness = fitness2, n.evals=MU)
   
+    arch<-initParetoArchive(ctrl)
+    
     ##And here we iterate MAX.iter times through and recombine the individuals to establish optimal solutions for each scenario.
                                              
     start<-Sys.time()
@@ -265,21 +266,30 @@ for(a in 1:nrow(scen_names)){
       fitness2[1,]<-fitness2[1,]*-1
   
       updateLogger(logger, population, fitness = fitness2,n.evals = LAMBDA)
-      #autoplot(getStatistics(logger))
-      #pareto_arch<-updateParetoArchive(pareto_arch,population,fitness = fitness)
+       updateParetoArchive(archive=arch, inds=population, fitness = fitness)
+       
+       if(i%%100 == 0){
+         print(i/MAX.ITER*100)
+       }
     }
     end<-Sys.time()
     print(end-start)
   
     stats<-getStatistics(logger)
+    
     #save HV curve
     jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,],"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
     plot(stats)
     dev.off()
-  
-    dom_fitness<-which(dominated(fitness)==T)
-    dom_fitness<-fitness[1:3, dom_fitness]
-  
+    
+    #non_dom population and fitness
+    
+    nondomPOP<-getIndividuals(arch)
+    
+    
+    nonDom_fitness<-which(dominated(fitness)==F)
+    nonDom_fitness<-t(fitness[1:3, nonDom_fitness])
+    colnames(nonDom_fitness)<-c("mean_MWH/yHA","number_WT","CE_index")
     # as soon as the optimization is finished, the extreme populations are extracted (max enerdens, min evens and minimal amount of WT) in order to map these extreme individuals spatially for each scenario  
     enerdens_max<-which.max(fitness[1,])
     enerdens_max<-unlist(population[enerdens_max])
@@ -302,13 +312,16 @@ for(a in 1:nrow(scen_names)){
     cen$sum_pop_pareto<-b
   
     #store cen in the DB with the scenario NAME
-    cen<-as.data.frame(cen)
+    cen<-st_as_sf(cen)
     st_write(obj = cen, dsn = con, Id(schema="optim_res", table = as.character(paste(scen_names[a,],"_res",sep=""))))
  
     #and write the population and fitness into csv
-
+    
+    fitness<-t(fitness)
+    colnames(fitness)<-c("mean_MWH/yHA","number_WT","CE_index")
+    
     write.csv(fitness,paste(path_fitness,paste(scen_names[a,],"csv",sep="."), sep = "/"))
-    write.csv(population,paste(path_population,paste(scen_names[a,],"csv",sep="."), sep = "/"))
+    write.csv(nonDom_fitness,paste(path_population,paste(scen_names[a,],"csv",sep="."), sep = "/"))
   
     #store the fitness values of each scenario in the fitness list
     fitness_list[[paste0(scen_names[a,], a)]]<-fitness
@@ -320,3 +333,14 @@ for(a in 1:nrow(scen_names)){
 }
 
 ```
+
+#some basic checks
+
+```{r}
+#read out the actual points
+cen1<-st_read(dsn = con, Id(schema="optim_res", table = "B1_FOR+_2020-09-22_res"))
+cen1<-subset(cen1,cen1$amount_min==1)
+sum(cen1$prod_MW)
+
+```
+
