@@ -28,6 +28,8 @@ require(tidyr)
 require(maptools)
 require(RPostgres)
 require(stringr)
+require(car)
+library(onewaytests)
 ```
 
 ## R Markdown
@@ -41,12 +43,14 @@ in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_ste
 
 in_dat$group<-as.factor(in_dat$group)
 group_names<-levels(in_dat$group)
+in_dat$SCENARIO<-as.factor(in_dat$SCENARIO)
+scen_names<-levels(in_dat$SCENARIO)
 in_dat$frame_policy<-as.factor(in_dat$frame_policy)
 in_dat$restr<-as.factor(in_dat$restr)
 
 ###order mean according to ENERGYSCAPE order and plot coherence
-in_dat$restr <- factor(in_dat$restr,levels = c( "+", "++"))
-in_dat$frame_policy <- factor(in_dat$frame_policy,levels = c("NO_CONSTR"))
+in_dat$restr <- factor(in_dat$restr,levels = c( "base","NOT_IN","+", "++"))
+in_dat$frame_policy <- factor(in_dat$frame_policy,levels = c("NO_CONSTR","NO_EXCL","OTHER"))
 
 
 par(mfrow=c(1,2))
@@ -113,7 +117,7 @@ wt<-ggplot(plot_dat, aes(x=as.factor(restr), y=number_WT, fill=as.factor(restr))
 plot_tmp<-ggarrange(enerdens, wt, clus,  ncol = 1,nrow = 3, common.legend = T,labels = "auto")
 
 
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitness_graphs/",paste(name,"_fitness_box.jpg",sep=""),sep=""),width = 900, height = 600)
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitness_graphs/",paste(name,"_fitness_box.jpg",sep=""),sep=""),width = 1500, height = 1000)
 plot(plot_tmp)
 dev.off()
 }
@@ -171,6 +175,84 @@ legend(s3d2$xyz.convert(6, 735, 0.58), legend = levels(as.factor(in_moderate$sce
 
 
 ```
+
+##statistics
+```{r}
+###FOREST
+#subsetting for testing
+a<-subset(in_dat,in_dat$SCENARIO=="B2_HZ++")
+b<-subset(in_dat,in_dat$SCENARIO=="B2_HZ+")
+both<-rbind(a,b)
+all<-subset(in_dat,in_dat$SCENARIO=="B2_FOR_NOT_IN" |  in_dat$SCENARIO=="B2_base"|  in_dat$SCENARIO=="B1_base" | in_dat$SCENARIO=="B1_FOR_NOT_IN")
+
+## Number of WT
+
+
+#1. CHECK FOR NORMAL DISTR
+shapiro.test(a$number_WT) #not normal
+shapiro.test(b$number_WT) #not normal
+
+leveneTest(a$number_WT,b$number_WT) #homogeneity of variance
+
+#if levene p>.05 t test
+t.test(a$number_WT,b$number_WT,alternative = "two.sided", var.equal = FALSE)
+
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+welch.test(number_WT~SCENARIO,both)
+
+#graphical check
+ggboxplot(both, x = "SCENARIO", y = "number_WT", 
+          color = "group", palette = c("#00AFBB", "#E7B800"),
+        ylab = "n_WT", xlab = "SCENARIO")
+
+summary(aov(number_WT~frame_policy+restr,data=all))
+
+## CE
+
+#1. CHECK FOR NORMAL DISTR
+shapiro.test(a$CE_index) #not normal
+shapiro.test(b$CE_index) #not normal
+
+leveneTest(a$CE_index,b$CE_index) #homogeneity of variance
+
+#if levene p>.05 t test
+t.test(a$CE_index,b$CE_index,alternative = "two.sided", var.equal = FALSE)
+
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+welch.test(CE_index~SCENARIO,both)
+
+#graphical check
+ggboxplot(both, x = "SCENARIO", y = "CE_index", 
+          color = "group", palette = c("#00AFBB", "#E7B800"),
+        ylab = "CE_ind", xlab = "SCENARIO")
+
+summary(aov(number_WT~frame_policy+restr,data=all))
+
+
+## enerdens
+
+#1. CHECK FOR NORMAL DISTR
+shapiro.test(a$mean_MWH.yHA) #not normal
+shapiro.test(b$mean_MWH.yHA) #not normal
+
+leveneTest(base$mean_MWH.yHA,NOT_IN_FOR$mean_MWH.yHA) #homogeneity of variance
+
+#if levene p>.05 t test
+t.test(a$mean_MWH.yHA,b$mean_MWH.yHA,alternative = "two.sided", var.equal = FALSE)
+
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+welch.test(mean_MWH.yHA~SCENARIO,both)
+
+#graphical check
+ggboxplot(both, x = "SCENARIO", y = "mean_MWH.yHA", 
+          color = "group", palette = c("#00AFBB", "#E7B800"),
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")
+
+summary(aov(mean_MWH.yHA~frame_policy+restr,data=all))
+
+
+```
+
 
 ## some maps
 
