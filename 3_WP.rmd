@@ -30,6 +30,11 @@ require(RPostgreSQL)
 
 con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
+
+
+#st_write(cen,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201005"))
+
+
 ```
 
 ## R Markdown
@@ -42,8 +47,14 @@ When you click the **Knit** button a document will be generated that includes bo
 
 #cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_fin_200831.shp")
 
-cen<-st_read(dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_200922"))
+cen<-st_read(dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201005"))
 
+#correlation analysis between the variables
+correl_metr<-st_drop_geometry(cen)
+correl_metr<-correl_metr[c(5:23)]
+correl_metr<-as.matrix(correl_metr)
+correl_metr<-rcorr(correl_metr, type="pearson")
+corrplot::corrplot(correl_metr$r, method= "circle",  tl.col="black", tl.cex = 1.7,  diag=FALSE)
 
 ```
 
@@ -52,19 +63,17 @@ This section defines the objectives as a function of x. While x is a binary vect
 ```{r helper functions}
 
 ener_dens<-function(x){
-    ener<-sum(x*cen$ENER_DENS)/sum(x)
-    return(ener)
-     }  
-
+  ener<-sum(x*cen$ENER_DENS)/sum(x)
+  return(ener)
+}  
 
 #counts the amount of WT in a model run
 amount_WT<-function(x){
   am_WT<-sum(x)
-return(am_WT)}
+  return(am_WT)
+}
 
-
-  
-# thats the clark evens index (the smaller the value below 0 the more clustered the data is)
+# The clark evens index (the smaller the value below 0 the more clustered the data is)
 cluster_fun<-function(x){
   cen$X<-x
   tmp<-subset(cen,X==1)
@@ -86,85 +95,145 @@ cur_dat<-Sys.Date()
 scen_name<-paste("B1",cur_dat,sep = "_")
 st_write(obj = cen, dsn = con, Id(schema="scenario", table = scen_name))
 
-#No exclusion areas
-tmp<-subset(cen,cen$IN_EXCL==0)
+#B2 NO EXCLUSION AREAS
+
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_ISOS>600)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>5000)
+
+
 scen_name<-paste("B2",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-#OTHER
-tmp<-subset(cen,cen$IN_OTHER==1)
-scen_name<-paste("B3",cur_dat,sep = "_")
+##B2_IN_FOR
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_ISOS>600)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>5000)
+tmp<-subset(tmp,tmp$DIST_FOR>0)
+
+scen_name<-paste("B2_IN_FOR+",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-##### FOREST ####################
-#not in forest
-tmp<-subset(cen,cen$DIST_FOR>1)
-scen_name<-paste("B1_NOT_IN_FOR",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
+##B2 FOR+
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_ISOS>600)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>5000)
+tmp<-subset(tmp,tmp$DIST_FOR>50)
 
-#plus_Forest
-tmp<-subset(cen,cen$DIST_FOR>300)
-scen_name<-paste("B1_FOR+",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-#plus_plus_Forest
-tmp<-subset(cen,cen$DIST_FOR>600)
-scen_name<-paste("B1_FOR++",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-##not in exclusion B2
-
-#not in forest
-tmp<-subset(cen,cen$DIST_FOR>1 & cen$IN_EXCL==0)
-scen_name<-paste("B2_NOT_IN_FOR",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-#plus_Forest
-tmp<-subset(cen,cen$DIST_FOR>300 & cen$IN_EXCL==0)
 scen_name<-paste("B2_FOR+",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-#plus_plus_Forest
-tmp<-subset(cen,cen$DIST_FOR>600 & cen$IN_EXCL==0)
+##B2 FOR++
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_ISOS>600)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>5000)
+tmp<-subset(tmp,tmp$DIST_FOR>100)
+
 scen_name<-paste("B2_FOR++",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-##only other areas B3
+## not exclusion and not reserve (B3)
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$FFF==0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1500)
+tmp<-subset(tmp,tmp$DIST_FOR>0)
+
+scen_name<-paste("B3",cur_dat,sep = "_")
+st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
 
-#plus_Forest
-tmp<-subset(cen,cen$DIST_FOR>300 & cen$IN_OTHER==1)
+#B3_FOR-
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$FFF==0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1500)
+
+scen_name<-paste("B3_FOR-",cur_dat,sep = "_")
+st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
+
+#B3_FOR+
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$FFF==0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1500)
+tmp<-subset(tmp,tmp$DIST_FOR>50)
+
 scen_name<-paste("B3_FOR+",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-#plus_plus_Forest
-tmp<-subset(cen,cen$DIST_FOR>600 & cen$IN_OTHER==1)
+#B3_FOR++
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$FFF==0)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1500)
+tmp<-subset(tmp,tmp$DIST_FOR>100)
+
 scen_name<-paste("B3_FOR++",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-##### Housing zones ####################
-tmp<-subset(cen,cen$DIST_HZ>300)
-scen_name<-paste("B1_HZ+",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-tmp<-subset(cen,cen$DIST_HZ>1200)
-scen_name<-paste("B1_HZ++",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-tmp<-subset(cen,cen$DIST_HZ>300 & cen$IN_EXCL==0)
-scen_name<-paste("B2_HZ+",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-tmp<-subset(cen,cen$DIST_HZ>1200 & cen$IN_EXCL==0)
-scen_name<-paste("B2_HZ++",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-tmp<-subset(cen,cen$DIST_HZ>300 & cen$IN_OTHER==1)
-scen_name<-paste("B3_HZ+",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-tmp<-subset(cen,cen$DIST_HZ>1200 & cen$IN_OTHER==1)
-scen_name<-paste("B3_HZ++",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
 ```
@@ -175,7 +244,6 @@ st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 fitness_list<-list()
 ScenName_list<-list()
 scen_vec<-vector()
-#scen_names<-matrix()
 
 path_fitness<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitness"
 path_population<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/population"
@@ -184,156 +252,168 @@ path_population<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_ste
 low_targ<-4299000
 up_targ<-4400000
 
-#low_targ<-800000
-#up_targ<-900000
-
-
 #checking the files in the DB (scenario schema) which have been stored during the previous section
-# Attention table name for subsetting!
-scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'AND table_name like '%FOR%'")
-#scen_names<-as.data.frame(scen_names[c(43,44),])
+#scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
+#scen_names<-as.data.frame(scen_names[c(1:3),])
+
+scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'AND table_name like '%B3%'")
 
 #the fitness function calls the three optimization functions. If the energy target is not reached from the individual WT configuration, very high (low) values will be returned
  fitness.fun = function(x){
-      if((sum(x*cen$prod_MW)>low_targ)& (sum(x*cen$prod_MW)<up_targ)){
-      res<-c(ener_dens(x),amount_WT(x),cluster_fun(x))
-      }
-  else{res<-c(-10^20,10^20,10^20)}
-     return(res)
- }
-
-# Here we loop through all scen files from the DB and calculate the optimization
-for(a in 1:nrow(scen_names)){
-ScenName_list[a]<-as.character(scen_names[a,])
-
-
-#read out the actual points
-cen<-st_read(dsn = con, Id(schema="scenario", table = as.character(scen_names[a,])))
-cen<-as_Spatial(cen)
-
-
-#and double check if the energy target is reachable
-  if(sum(cen$prod_MW)<low_targ){
-    print(paste(scen_names[a]," is not possible to realize", sep=""))
-    next
-  } else{
-  #the bounds are calculated to establish an initial population which can reach the energy target (we add +- 10% to the boundaries)
-  bound_up<-up_targ/sum(cen$prod_MW)+0.2*up_targ/sum(cen$prod_MW)
-  bound_low<-low_targ/sum(cen$prod_MW)-0.2*low_targ/sum(cen$prod_MW)}
-   
-  #setup of the NSGA2 for each scenario
-  MU = 80; LAMBDA = MU-5; N.BITS = nrow(cen); MAX.ITER =2000
-
-  ctrl<-initECRControl(fitness.fun, n.objectives = 3L, minimize = c(FALSE,TRUE,TRUE))
-
-  ctrl<-registerECROperator(ctrl, "mutate", mutBitflip, p=1/N.BITS)
-
-  ctrl<-registerECROperator(ctrl, "recombine", recCrossover)
-
-  ctrl<-registerECROperator(ctrl, "selectForMating", selSimple)
-
-  ctrl<-registerECROperator(ctrl, "selectForSurvival",  selNondom)
-  
-
-
-
-  #WE NEED TO DEFINE A VECTOR WITH the lower and the upper bounds of ONES and ZEROS in order to reach the target specified in the goals
-  population<-list()
-  for(i in 1:MU){
-  x3 <- sample(round(100*bound_low):round(100*bound_up), 1)
-  pop_vec<-(sample(1:0, size=nrow(cen), prob=c(x3,100-x3), replace=TRUE))
-  population[[i]]<-pop_vec
+  if((sum(x*cen$prod_MW)>low_targ)& (sum(x*cen$prod_MW)<up_targ)){
+    res<-c(ener_dens(x),amount_WT(x),cluster_fun(x))
   }
-  #The initial population and it's fitness
-  fitness = evaluateFitness(ctrl , population)
-  
-#since the compute HV only works for minimized goals, we need to transform the only maximized goal
-  fitness2<-fitness
-  fitness2[1,]<-fitness2[1,]*-1
-   
-##Setting up the statistics HV   
-  ref.point<-c(8,1000,1)
-  #ref.point<-c(6,70,1)
-  logger<-initLogger(ctrl,log.stats = list(fitness = list("HV"=list(fun=computeHV, pars = list(ref.point=ref.point)))),init.size =  MAX.ITER+1L)
-  updateLogger(logger,population=population, fitness = fitness2, n.evals=MU)
-  
-##Setting up the archive  
-# par_arch<-initParetoArchive(ctrl)
- # updateParetoArchive(par_arch, inds =population ,fitness = fitness2)
-  
-##And here we iterate 2000x and recombine the individuals to establish optimal solutions for each scenario.
-                                             
-start<-Sys.time()
-#loop
-for(i in seq_len(MAX.ITER)){
-# offspring<-mutate(ctrl, population, p.mut = 0.9)
-  offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb = 0.8, p.mut = 0.2)
+  else{res<-c(-10^20,10^20,10^20)}
+    return(res)
+  }
 
-  fitness.o<-evaluateFitness(ctrl,offspring)
-  
-  sel<-replaceMuPlusLambda(ctrl, population, offspring, fitness, fitness.o)
-  
-  population<-sel$population
-  fitness<-sel$fitness
-  fitness2<-fitness
-  fitness2[1,]<-fitness2[1,]*-1
-  
-  updateLogger(logger, population, fitness = fitness2,n.evals = LAMBDA)
-  #autoplot(getStatistics(logger))
-  #pareto_arch<-updateParetoArchive(pareto_arch,population,fitness = fitness)
-  
-}
-end<-Sys.time()
-end-start
-
-  
-stats<-getStatistics(logger)
-  
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,],"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
-  plot(stats)
-  dev.off()
-  
-  dom_fitness<-which(dominated(fitness)==T)
-  dom_fitness<-fitness[1:3, dom_fitness]
-  
-  # as soon as the optimization is finished, the extreme populations are extracted (max enerdens, min evens and minimal amount of WT) in order to map these extreme individuals spatially for each scenario  
-  enerdens_max<-which.max(fitness[1,])
-  enerdens_max<-unlist(population[enerdens_max])
-
-  amount_min<-which.min(fitness[2,])
-  amount_min<-unlist(population[amount_min])
-
-  #the minimal value of clark even index represents the maximal clustering
-  clus_max<-which.min(fitness[3,])
-  clus_max<-unlist(population[clus_max])
-
-  #the extreme individuals are attached to the point layers
-  cen$enerdens_max<-enerdens_max
-  cen$amount_min<-amount_min
-  cen$clus_max<-clus_max
-
-  #calculate how often each site is in the pareto optimal in order to get a feeling about the confidence of the optimal sites
-  b<-Reduce(`+`, population)
-  #attach to cen
-  cen$sum_pop_pareto<-b
-  
-  #store cen in the DB with the scenario NAME
-  cen<-as.data.frame(cen)
-  st_write(obj = cen, dsn = con, Id(schema="optim_res", table = as.character(paste(scen_names[a,],"_res",sep=""))))
+#global NSGA2 settings
+MU = 80; LAMBDA = MU-5;  MAX.ITER =20000
  
+# Here we loop through all scenario files from the DB and calculate the optimization
+for(a in 1:nrow(scen_names)){
+  ScenName_list[a]<-as.character(scen_names[a,])
 
-  #and write the population and fitness into csv
-
-  write.csv(fitness,paste(path_fitness,paste(scen_names[a,],"csv",sep="."), sep = "/"))
-  write.csv(population,paste(path_population,paste(scen_names[a,],"csv",sep="."), sep = "/"))
+  #read out the points with the name of the name list at position a
+  cen<-st_read(dsn = con, Id(schema="scenario", table = as.character(scen_names[a,])))
+  cen<-as_Spatial(cen)
   
-  #store the fitness values of each scenario in the fitness list
-  fitness_list[[paste0(scen_names[a,], a)]]<-fitness
-  #and 
-  scen_vec[a]<-scen_names[a,]  
   
-print(paste(paste(paste(a, " of total ",sep = ""), nrow(scen_names), sep=""), " scenarios are computed", sep = ""))
-} 
+  #the bounds are calculated to establish an initial population which can reach the energy target (we add +- 10% to    the boundaries)
+  bound_up<-up_targ/sum(cen$prod_MW)+0.1*up_targ/sum(cen$prod_MW)
+  bound_low<-low_targ/sum(cen$prod_MW)-0.1*low_targ/sum(cen$prod_MW)
+  
+  
+  #we check if there are enough points to reach the energy target of 4.3TWh/y
+  if(sum(cen$prod_MW)<low_targ | bound_up>1){
+    print(" is not possible to optimize")
+    next
+    #otherwise proceed with the optimization
+  } 
+  else{
+    print(" will be optimized!!")
+    #cen specific NSGA2 settings
+    N.BITS = nrow(cen)
+    #control settings
+    ctrl<-initECRControl(fitness.fun, n.objectives = 3L, minimize = c(FALSE,TRUE,TRUE))
+    ctrl<-registerECROperator(ctrl, "mutate", mutBitflip, p=1/N.BITS)
+    ctrl<-registerECROperator(ctrl, "recombine", recCrossover)
+    ctrl<-registerECROperator(ctrl, "selectForMating", selSimple)
+    ctrl<-registerECROperator(ctrl, "selectForSurvival",  selNondom)
+  
+    #WE NEED TO DEFINE A VECTOR WITH the lower and the upper bounds of ONES and ZEROS in order to reach the target       specified in the goals
+    population<-list()
+    for(i in 1:MU){
+      x3 <- sample(round(100*bound_low):round(100*bound_up), 1)
+      pop_vec<-(sample(1:0, size=nrow(cen), prob=c(x3,100-x3), replace=TRUE))
+      population[[i]]<-pop_vec
+    }
+    #The initial population and it's fitness
+    fitness = evaluateFitness(ctrl , population)
+  
+    #since the compute HV only works for minimized goals, we need to transform the only maximized goal
+    fitness2<-fitness
+    fitness2[1,]<-fitness2[1,]*-1
+   
+    ##Setting up the statistics HV   
+    ref.point<-c(8,1000,1)
+  
+    logger<-initLogger(ctrl,log.stats = list(fitness = list("HV"=list(fun=computeHV, pars = list(ref.point=ref.point)))),log.pop=T,init.size = MAX.ITER+1L)
+    updateLogger(logger,population=population, fitness = fitness2, n.evals=MU)
+  
+    arch<-initParetoArchive(ctrl)
+    
+    ##And here we iterate MAX.iter times through and recombine the individuals to establish optimal solutions for each scenario.
+                                             
+    start<-Sys.time()
+    for(i in seq_len(MAX.ITER)){
+      #offspring<-mutate(ctrl, population, p.mut = 0.9)
+      offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb = 0.8, p.mut = 0.2)
+      fitness.o<-evaluateFitness(ctrl,offspring)
+      #new selection
+      sel<-replaceMuPlusLambda(ctrl, population, offspring, fitness, fitness.o)
+      #selected population
+      population<-sel$population
+      fitness<-sel$fitness
+      fitness2<-fitness
+      fitness2[1,]<-fitness2[1,]*-1
+  
+      updateLogger(logger, population, fitness = fitness2,n.evals = LAMBDA)
+       updateParetoArchive(archive=arch, inds=population, fitness = fitness)
+       
+       if(i%%100 == 0){
+         print(i/MAX.ITER*100)
+       }
+    }
+    end<-Sys.time()
+    print(end-start)
+  
+    stats<-getStatistics(logger)
+    
+    #save HV curve
+    jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,],"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
+    plot(stats)
+    dev.off()
+    
+    #non_dom population and fitness
+    
+    nondomPOP<-getIndividuals(arch)
+    
+    
+    nonDom_fitness<-which(dominated(fitness)==F)
+    nonDom_fitness<-t(fitness[1:3, nonDom_fitness])
+    colnames(nonDom_fitness)<-c("mean_MWH/yHA","number_WT","CE_index")
+    # as soon as the optimization is finished, the extreme populations are extracted (max enerdens, min evens and minimal amount of WT) in order to map these extreme individuals spatially for each scenario  
+    enerdens_max<-which.max(fitness[1,])
+    enerdens_max<-unlist(population[enerdens_max])
 
+    amount_min<-which.min(fitness[2,])
+    amount_min<-unlist(population[amount_min])
+
+    #the minimal value of clark even index represents the maximal clustering
+    clus_max<-which.min(fitness[3,])
+    clus_max<-unlist(population[clus_max])
+
+    #the extreme individuals are attached to the point layers
+    cen$enerdens_max<-enerdens_max
+    cen$amount_min<-amount_min
+    cen$clus_max<-clus_max
+
+    #calculate how often each site is in the pareto optimal in order to get a feeling about the confidence of the optimal sites
+    b<-Reduce(`+`, population)
+    #attach to cen
+    cen$sum_pop_pareto<-b
+  
+    #store cen in the DB with the scenario NAME
+    cen<-st_as_sf(cen)
+    st_write(obj = cen, dsn = con, Id(schema="optim_res_201005", table = as.character(paste(scen_names[a,],"_res",sep=""))))
+ 
+    #and write the population and fitness into csv
+    
+    fitness<-t(fitness)
+    colnames(fitness)<-c("mean_MWH/yHA","number_WT","CE_index")
+    
+    write.csv(fitness,paste(path_fitness,paste(scen_names[a,],"csv",sep="."), sep = "/"))
+    write.csv(nonDom_fitness,paste(path_population,paste(scen_names[a,],"csv",sep="."), sep = "/"))
+  
+    #store the fitness values of each scenario in the fitness list
+    fitness_list[[paste0(scen_names[a,], a)]]<-fitness
+    #and 
+    scen_vec[a]<-scen_names[a,]  
+  
+    print(paste(paste(paste(a, " of total ",sep = ""), nrow(scen_names), sep=""), " scenarios are computed", sep = ""))
+  } 
+}
 
 ```
+
+#some basic checks
+
+```{r}
+#read out the actual points
+cen1<-st_read(dsn = con, Id(schema="optim_res", table = "B1_FOR+_2020-09-22_res"))
+cen1<-subset(cen1,cen1$amount_min==1)
+sum(cen1$prod_MW)
+
+```
+
