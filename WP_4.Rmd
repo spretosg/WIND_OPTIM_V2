@@ -1,0 +1,303 @@
+---
+title: "Results and PLOTS wind optim project"
+author: "R.Spielhofer"
+date: "22 June 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("stringr")
+
+require(raster)
+require(rgdal)
+require(dplyr)
+require(sf)
+require(sp)
+require(ggplot2)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+require(ggpubr)
+require(spatstat)
+require(gdalUtils)
+require(reticulate)
+require(tidyr)
+require(maptools)
+require(RPostgres)
+require(stringr)
+require(car)
+library(onewaytests)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all_201005.csv")
+
+in_dat$group<-as.factor(in_dat$group)
+group_names<-levels(in_dat$group)
+in_dat$SCENARIO<-as.factor(in_dat$SCENARIO)
+scen_names<-levels(in_dat$SCENARIO)
+in_dat$frame_policy<-as.factor(in_dat$frame_policy)
+in_dat$restr<-as.factor(in_dat$restr)
+
+###order mean according to ENERGYSCAPE order and plot coherence
+in_dat$restr <- factor(in_dat$restr,levels = c( "base","NOT_IN","+", "++"))
+in_dat$frame_policy <- factor(in_dat$frame_policy,levels = c("NO_CONSTR","NO_EXCL","OTHER"))
+
+
+par(mfrow=c(1,2))
+colors<- c("#884ea0", "#9c640c", "#5f6a6a")
+          colors <- colors[as.factor(in_dat$group)]
+          
+shapes = c(0, 1, 2) 
+
+shapes <- shapes[as.numeric(as.factor(in_dat$scen))]
+
+s3d<- scatterplot3d::scatterplot3d(in_dat[,1:3], 
+                                       angle = 220, type="h",
+                                        main="No constraints BZ",
+              xlab = "mean energy density [MWh/ha] --> max",
+              ylab = "amount of WT <--min",
+              zlab = "clustering <--min")
+                                       
+                                       
+legend(s3d$xyz.convert(6, 735, 0.58), legend = levels(as.factor(in_dat$SCENARIO)),
+      col =  c("#884ea0", "#9c640c", "#5f6a6a"), pch = c(0,1,2))
+
+
+for(i in 1: length(group_names)){
+  cols <- c("BASE" = "#95a5a6", "NOT_IN" = "#FFA07A", "+" = "#FA8072", "++" = "#CD5C5C")
+  title <- element_text(face = "bold.italic", size = 14)
+  axis_title <- element_blank()
+  axis_lable<-element_text(face = "italic", size = 10)
+  
+  name<-group_names[i]
+  plot_dat<-subset(in_dat,in_dat$group==as.character(group_names[i])|in_dat$group=="FOR")
+  
+  clus<-ggplot(plot_dat, aes(x=as.factor(restr), y=CE_index, fill=as.factor(restr))) +   
+    geom_boxplot()+
+    labs(col = "restrictions")+
+    scale_fill_manual(values = cols)+
+    facet_grid(facets = "clark evens cluster ind"~frame_policy, scales = "free_x")+
+    theme_light()+
+    theme(axis.title=axis_title,axis.text =axis_lable,
+          strip.text = element_text(size = 12,color = "black"))+
+    theme(legend.position = "none")
+    
+
+enerdens<-ggplot(plot_dat, aes(x=as.factor(restr), y=mean_MWH.yHA, fill=as.factor(restr))) +   
+    geom_boxplot()+
+    labs(title=as.character(name),col = "restrictions")+
+    scale_fill_manual(values = cols)+
+    facet_grid(facets = "Energy/visible area [MWh/ha]"~frame_policy, scales = "free_x")+
+    theme_light()+
+    theme(axis.title=axis_title,axis.text =axis_lable,
+          strip.text = element_text(size = 12,color = "black"))+
+    theme(legend.position = "none")
+
+wt<-ggplot(plot_dat, aes(x=as.factor(restr), y=number_WT, fill=as.factor(restr))) +   
+    geom_boxplot()+
+    labs(col = "restrictions")+
+    scale_fill_manual(values = cols)+
+    facet_grid(facets = "number of wind turbines"~frame_policy, scales = "free_x")+
+    theme_light()+
+    theme(axis.title=axis_title,axis.text =axis_lable,
+          strip.text = element_text(size = 12,color = "black"))+
+    theme(legend.position = "none")
+
+
+plot_tmp<-ggarrange(enerdens, wt, clus,  ncol = 1,nrow = 3, common.legend = T,labels = "auto")
+
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitness_graphs/",paste(name,"_fitness_box.jpg",sep=""),sep=""),width = 1500, height = 1000)
+plot(plot_tmp)
+dev.off()
+}
+
+
+
+clus<-ggplot(subset(in_dat,in_dat$group=="BZ"|in_dat$group=="BASE"), aes(x=as.factor(SCENARIO), y=clustering, col=as.factor(restr))) +   geom_boxplot()+
+  facet_wrap(facets = ~frame_policy, scales = "free_x")
+
+enerdens<-ggplot(subset(in_dat,in_dat$group=="BZ"|in_dat$group=="BASE"), aes(x=as.factor(SCENARIO), y=enerdens, col=as.factor(restr))) +   geom_boxplot()+
+  facet_wrap(facets = ~frame_policy, scales = "free_x")
+
+wt<-ggplot(subset(in_dat,in_dat$group=="BZ"|in_dat$group=="BASE"), aes(x=as.factor(SCENARIO), y=n_WT, col=as.factor(restr))) +   geom_boxplot()+
+  facet_wrap(facets = ~frame_policy, scales = "free_x")
+
+
+ggarrange(enerdens, wt, clus,  ncol = 1,nrow = 3, common.legend = T)
+
+
+
+enerdens<-ggplot(subset(in_dat,in_dat$group=="FOREST"|in_dat$group=="BASE"), aes(x=as.factor(scen), y=mean(enerdens))) + 
+  geom_line()+
+  geom_point()+
+  facet_wrap(as.factor(in_dat$group))
+
+## does not work so far but should look nice
+install.packages("rayshader")
+library(rayshader)
+library(ggplot2)
+install.packages("tidyverse")
+library(tidyverse)
+plot_gg = ggplot(in_dat) + 
+  geom_point(aes(x=enerdens,color=n_WT,y=clustering),size=2) +
+  scale_color_continuous(limits=c(0,8)) +
+  ggtitle("mtcars: Displacement vs mpg vs # of cylinders") +
+  
+  theme(title = element_text(size=8),
+        text = element_text(size=12)) 
+
+plot_gg(plot_gg, height=3, width=3.5, multicore=F, pointcontract = 0.7, soliddepth=-100)
+
+
+
+colors<- c("#b7ded2", "#f6a6b2", "#f7c297")
+          colors <- colors[as.factor(in_moderate$scen)]
+s3d2<- scatterplot3d::scatterplot3d(in_moderate[,1:3], 
+                                       angle = 55,pch = 10,color = colors,type="h",
+                                        main="MODERATE BZ",
+              xlab = "mean energy density [MWh/ha] --> max",
+              ylab = "amount of WT <--min",
+              zlab = "clustering <--min")
+                                       
+legend(s3d2$xyz.convert(6, 735, 0.58), legend = levels(as.factor(in_moderate$scen)),
+      col =  c("#b7ded2", "#f6a6b2", "#f7c297"), pch = c(0,1,2))
+
+
+```
+
+##statistics
+```{r}
+###FOREST
+#subsetting for testing
+a<-subset(in_dat,in_dat$SCENARIO=="B3")
+b<-subset(in_dat,in_dat$SCENARIO=="B3_FOR+")
+both<-rbind(a,b)
+all<-subset(in_dat,in_dat$SCENARIO=="B2_FOR_NOT_IN" |  in_dat$SCENARIO=="B2_base"|  in_dat$SCENARIO=="B1_base" | in_dat$SCENARIO=="B1_FOR_NOT_IN")
+
+## Number of WT
+
+
+#1. CHECK FOR NORMAL DISTR
+shapiro.test(a$number_WT) #not normal
+shapiro.test(b$number_WT) #not normal
+
+leveneTest(a$number_WT,b$number_WT) #homogeneity of variance
+
+#if levene p>.05 t test
+t.test(a$number_WT,b$number_WT,alternative = "two.sided", var.equal = FALSE)
+
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+welch.test(number_WT~SCENARIO,both)
+
+#graphical check
+ggboxplot(both, x = "SCENARIO", y = "number_WT", 
+          color = "group", palette = c("#00AFBB", "#E7B800"),
+        ylab = "n_WT", xlab = "SCENARIO")
+
+summary(aov(number_WT~frame_policy+restr,data=all))
+
+## CE
+
+#1. CHECK FOR NORMAL DISTR
+shapiro.test(a$CE_index) #not normal
+shapiro.test(b$CE_index) #not normal
+
+leveneTest(a$CE_index,b$CE_index) #homogeneity of variance
+
+#if levene p>.05 t test
+t.test(a$CE_index,b$CE_index,alternative = "two.sided", var.equal = FALSE)
+
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+welch.test(CE_index~SCENARIO,both)
+
+#graphical check
+ggboxplot(both, x = "SCENARIO", y = "CE_index", 
+          color = "group", palette = c("#00AFBB", "#E7B800"),
+        ylab = "CE_ind", xlab = "SCENARIO")
+
+summary(aov(number_WT~frame_policy+restr,data=all))
+
+
+## enerdens
+
+#1. CHECK FOR NORMAL DISTR
+shapiro.test(a$mean_MWH.yHA) #not normal
+shapiro.test(b$mean_MWH.yHA) #not normal
+
+leveneTest(b$mean_MWH.yHA,a$mean_MWH.yHA) #homogeneity of variance
+
+#if levene p>.05 t test
+t.test(a$mean_MWH.yHA,b$mean_MWH.yHA,alternative = "two.sided", var.equal = FALSE)
+
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+welch.test(mean_MWH.yHA~SCENARIO,both)
+
+#graphical check
+ggboxplot(both, x = "SCENARIO", y = "mean_MWH.yHA", 
+          color = "group", palette = c("#00AFBB", "#E7B800"),
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")
+
+summary(aov(mean_MWH.yHA~frame_policy+restr,data=all))
+
+
+```
+
+
+## some maps
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
+                      user = "postgres", password = "reto89LLSIMI")
+
+scen_names<-dbGetQuery(conn,"SELECT table_name FROM information_schema.tables WHERE table_schema='optim_res_201005'")
+bound<-st_read(dsn= conn, Id(schema="GEO_base_data", table = "CH_boundaries"))
+bound<-st_transform(bound,crs = "+init=epsg:21781") 
+
+# Here we loop through all scen files from the DB and calculate the optimization
+for(a in 1:nrow(scen_names)){
+ScenName<-str_sub(as.character(scen_names[a,]),1,-16)
+
+
+#read out the actual points
+cen<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[a,])))
+
+cen<-subset(cen,cen$amount_min==1)
+
+map_tmp<-ggplot(data = bound) +
+    geom_sf() +
+    geom_density_2d_filled(mapping = aes(x=st_coordinates(cen)[,1] ,y=st_coordinates(cen)[,2]), data=cen,
+                     alpha=0.5,contour_var = "ndensity",colour=F)+
+    geom_sf(data = bound, fill = NA, color = "gray")+
+    geom_sf(data = cen, color= "black", size=0.8)+
+    ggtitle(paste(paste(paste(ScenName," with N = ",sep=""),nrow(cen),sep="")," wind turbines",sep=""))+
+   theme(axis.text=element_text(size=16)) + 
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+    #theme_minimal()
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/",paste(ScenName,"_min_WT_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
+plot(map_tmp)
+dev.off()
+
+}
+
+
+
+mapview(cen)  
+  
+  
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
