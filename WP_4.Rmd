@@ -39,7 +39,8 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r cars}
-in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all.csv")
+in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all_201007.csv")
+
 
 in_dat$group<-as.factor(in_dat$group)
 group_names<-levels(in_dat$group)
@@ -48,8 +49,8 @@ scen_names<-levels(in_dat$SCENARIO)
 in_dat$frame_policy<-as.factor(in_dat$frame_policy)
 in_dat$restr<-as.factor(in_dat$restr)
 
-###order mean according to ENERGYSCAPE order and plot coherence
-in_dat$restr <- factor(in_dat$restr,levels = c( "base","NOT_IN","+", "++"))
+
+in_dat$restr <- factor(in_dat$restr,levels = c( "base","-"))
 in_dat$frame_policy <- factor(in_dat$frame_policy,levels = c("NO_CONSTR","NO_EXCL","OTHER"))
 
 
@@ -59,11 +60,11 @@ colors<- c("#884ea0", "#9c640c", "#5f6a6a")
           
 shapes = c(0, 1, 2) 
 
-shapes <- shapes[as.numeric(as.factor(in_dat$scen))]
+shapes <- shapes[as.numeric(as.factor(in_dat$SCENARIO))]
 
 s3d<- scatterplot3d::scatterplot3d(in_dat[,1:3], 
                                        angle = 220, type="h",
-                                        main="No constraints BZ",
+                                        main="B3", color = colors,
               xlab = "mean energy density [MWh/ha] --> max",
               ylab = "amount of WT <--min",
               zlab = "clustering <--min")
@@ -180,8 +181,10 @@ legend(s3d2$xyz.convert(6, 735, 0.58), legend = levels(as.factor(in_moderate$sce
 ```{r}
 ###FOREST
 #subsetting for testing
-a<-subset(in_dat,in_dat$SCENARIO=="B2_HZ++")
-b<-subset(in_dat,in_dat$SCENARIO=="B2_HZ+")
+a<-subset(in_dat,in_dat$SCENARIO=="B3_base")
+b<-subset(in_dat,in_dat$SCENARIO=="B3_FOR-")
+
+
 both<-rbind(a,b)
 all<-subset(in_dat,in_dat$SCENARIO=="B2_FOR_NOT_IN" |  in_dat$SCENARIO=="B2_base"|  in_dat$SCENARIO=="B1_base" | in_dat$SCENARIO=="B1_FOR_NOT_IN")
 
@@ -205,8 +208,12 @@ ggboxplot(both, x = "SCENARIO", y = "number_WT",
           color = "group", palette = c("#00AFBB", "#E7B800"),
         ylab = "n_WT", xlab = "SCENARIO")
 
-summary(aov(number_WT~frame_policy+restr,data=all))
+summary(aov(number_WT~restr,data=in_dat))
 
+
+#graphical check of all three
+ggboxplot(in_dat, x = "SCENARIO", y = "number_WT", 
+        ylab = "n_WT", xlab = "SCENARIO")
 ## CE
 
 #1. CHECK FOR NORMAL DISTR
@@ -226,6 +233,10 @@ ggboxplot(both, x = "SCENARIO", y = "CE_index",
           color = "group", palette = c("#00AFBB", "#E7B800"),
         ylab = "CE_ind", xlab = "SCENARIO")
 
+#graphical check of all three
+ggboxplot(in_dat, x = "SCENARIO", y = "CE_index", 
+        ylab = "clustering", xlab = "SCENARIO")
+
 summary(aov(number_WT~frame_policy+restr,data=all))
 
 
@@ -235,7 +246,7 @@ summary(aov(number_WT~frame_policy+restr,data=all))
 shapiro.test(a$mean_MWH.yHA) #not normal
 shapiro.test(b$mean_MWH.yHA) #not normal
 
-leveneTest(base$mean_MWH.yHA,NOT_IN_FOR$mean_MWH.yHA) #homogeneity of variance
+leveneTest(b$mean_MWH.yHA,a$mean_MWH.yHA) #homogeneity of variance
 
 #if levene p>.05 t test
 t.test(a$mean_MWH.yHA,b$mean_MWH.yHA,alternative = "two.sided", var.equal = FALSE)
@@ -247,6 +258,10 @@ welch.test(mean_MWH.yHA~SCENARIO,both)
 ggboxplot(both, x = "SCENARIO", y = "mean_MWH.yHA", 
           color = "group", palette = c("#00AFBB", "#E7B800"),
         ylab = "mean_MWH.yHA", xlab = "SCENARIO")
+
+#graphical check of all three
+ggboxplot(in_dat, x = "SCENARIO", y = "mean_MWH.yHA", 
+        ylab = "MWh/ha", xlab = "SCENARIO")
 
 summary(aov(mean_MWH.yHA~frame_policy+restr,data=all))
 
@@ -262,7 +277,7 @@ You can also embed plots, for example:
 conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
                       user = "postgres", password = "reto89LLSIMI")
 
-scen_names<-dbGetQuery(conn,"SELECT table_name FROM information_schema.tables WHERE table_schema='optim_res'")
+scen_names<-dbGetQuery(conn,"SELECT table_name FROM information_schema.tables WHERE table_schema='optim_res_201005'")
 bound<-st_read(dsn= conn, Id(schema="GEO_base_data", table = "CH_boundaries"))
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
 
@@ -272,9 +287,9 @@ ScenName<-str_sub(as.character(scen_names[a,]),1,-16)
 
 
 #read out the actual points
-cen<-st_read(dsn = conn, Id(schema="optim_res", table = as.character(scen_names[a,])))
+cen<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[a,])))
 
-cen<-subset(cen,cen$clus_max==1)
+cen<-subset(cen,cen$enerdens_max==1)
 
 map_tmp<-ggplot(data = bound) +
     geom_sf() +
@@ -283,14 +298,17 @@ map_tmp<-ggplot(data = bound) +
     geom_sf(data = bound, fill = NA, color = "gray")+
     geom_sf(data = cen, color= "black", size=0.8)+
     ggtitle(paste(paste(paste(ScenName," with N = ",sep=""),nrow(cen),sep="")," wind turbines",sep=""))+
-   theme(axis.text=element_text(size=28,face = "bold")) + 
-  theme(legend.text=element_text(size=16)) 
+   theme(axis.text=element_text(size=16)) + 
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
     #theme_minimal()
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/OPTIM_RESULTS/maps/",paste(ScenName,"_clust_map.jpg",sep=""),sep=""),width = 1200, height = 1200)
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/",paste(ScenName,"_enerdens_max_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
 plot(map_tmp)
 dev.off()
 
 }
+
+
 
 mapview(cen)  
   
@@ -298,3 +316,24 @@ mapview(cen)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+in_dat %>%
+  group_by(SCENARIO) %>%
+  summarise_at(vars(number_WT,CE_index,mean_MWH.yHA), funs(mean(., na.rm=TRUE)))
+
+#read the last calc
+cen<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[4,])))
+
+
+tmp<-subset(cen,cen$FFF==1&cen$clus_max==1)
+
+B3_opt<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/B3_201008.shp")
+B3_opt<-st_drop_geometry(B3_opt)
+B3_opt_WT <- subset(B3_opt,B3_opt$amount_min==1)
+res3<-B3_opt_WT%>%group_by(CANT_name)%>%summarise_at(vars(prod_MW_ne),funs(sum(.,na.rm = F)/1000))
+
+write.csv(res3,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/B3_nWT.csv")
+
+```
+

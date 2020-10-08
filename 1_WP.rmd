@@ -24,7 +24,7 @@ require(tmaptools)
 require(DBI)
 require(RPostgreSQL)
 require(rpostgis)
-
+require(RPostgres)
 library(stars)
 
 rasterOptions(progress="T")#progress bar 
@@ -38,7 +38,7 @@ coord<-coord %>%
 
 
 ##POSTGIS DB connection for the files (ETH)
-con<- dbConnect("PostgreSQL", dbname = "publication_3_fin", host = "localhost", user = "postgres", password
+con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
 
 ```
@@ -225,7 +225,7 @@ res_icing<-(1-0.25*res_icing/100)
 #to check where the "big" losses occur
 plot(res_icing)
 
-#multiply the production raster with the icing losses and /1000 in order to rach MwH
+#multiply the production raster with the icing losses and /1000 in order to reach MwH
 MwH_100m_fin<-WEA_pow_tot100/1000*res_icing
 MwH_125m_fin<-WEA_pow_tot125/1000*res_icing
 MwH_150m_fin<-WEA_pow_tot150/1000*res_icing
@@ -246,8 +246,8 @@ mapview(MwH_125m_fin, alpha.regions = 0.8)
 cur_dat<-Sys.Date()
 outpath<-"intermediate_steps/1_wp/pot_ener_CH"
 
-writeRaster(MwH_100m_fin,filename=paste(outpath,paste(cur_dat,"E138_200_MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
-writeRaster(MwH_125m_fin,filename=paste(outpath,paste(cur_dat,"E82_200MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
+writeRaster(MwH_125m_fin,filename=paste(outpath,paste(cur_dat,"E138_200_MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
+writeRaster(MwH_100m_fin,filename=paste(outpath,paste(cur_dat,"E82_200MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
 writeRaster(MwH_150m_fin,filename=paste(outpath,paste(cur_dat,"V150_200MWH_ice.tif",sep="_"),sep = "/"),overwrite=T)
 ```
 
@@ -305,6 +305,9 @@ pgInsert(con,c("WT_PU_HEX","cen_E138"),hex_cenE138)
 ## ENERGYSCAPE landscape types
 The three different wind turbine models should be located in three specific regions. The largest V150 mainly in the flat areas (PLAT_URB, PLAT_AGRI) and in the flat, large inner alpine valleys (ALP_URB). The E138 will be placed in the Jura and in the PRE_ALPS. The smalles E82 in the touristic alpine regions, the alpine areas with and without infrastructure.
 ```{r}
+
+
+###############
 
 #import CH boundary to clip points
 LT<-raster("input_data/BIOG_REG/LT3_rast1.tif")

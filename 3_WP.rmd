@@ -28,11 +28,12 @@ require(reticulate)
 require(spatstat)
 require(RPostgreSQL)
 
+
 con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
 
 
-#st_write(cen,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201005"))
+#st_write(tmp,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
 
 
 ```
@@ -47,7 +48,7 @@ When you click the **Knit** button a document will be generated that includes bo
 
 #cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_fin_200831.shp")
 
-cen<-st_read(dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201005"))
+cen<-st_read(dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
 
 #correlation analysis between the variables
 correl_metr<-st_drop_geometry(cen)
@@ -96,144 +97,216 @@ scen_name<-paste("B1",cur_dat,sep = "_")
 st_write(obj = cen, dsn = con, Id(schema="scenario", table = scen_name))
 
 #B2 NO EXCLUSION AREAS
-
 tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
 tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
 tmp<-subset(tmp,tmp$DIST_UNE_N>0)
 tmp<-subset(tmp,tmp$DIST_MEAD > 0)
 tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_ISOS>600)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
 tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
 tmp<-subset(tmp,tmp$DIST_RAD>5000)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
 
 
 scen_name<-paste("B2",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-##B2_IN_FOR
-tmp<-subset(cen,cen$DIST_BLN > 0)
+
+#B2 NO EXCLUSION AREAS but allow WT in BLN
+
+tmp<-subset(cen,cen$DIST_HZ>300)
 tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
 tmp<-subset(tmp,tmp$DIST_UNE_N>0)
 tmp<-subset(tmp,tmp$DIST_MEAD > 0)
 tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_ISOS>600)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
 tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
 tmp<-subset(tmp,tmp$DIST_RAD>5000)
-tmp<-subset(tmp,tmp$DIST_FOR>0)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
 
-scen_name<-paste("B2_IN_FOR+",cur_dat,sep = "_")
+
+scen_name<-paste("B2_BLN-",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-##B2 FOR+
-tmp<-subset(cen,cen$DIST_BLN > 0)
-tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
-tmp<-subset(tmp,tmp$DIST_UNE_N>0)
-tmp<-subset(tmp,tmp$DIST_MEAD > 0)
-tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_ISOS>600)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
-tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
-tmp<-subset(tmp,tmp$DIST_RAD>5000)
-tmp<-subset(tmp,tmp$DIST_FOR>50)
 
-scen_name<-paste("B2_FOR+",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
-
-##B2 FOR++
-tmp<-subset(cen,cen$DIST_BLN > 0)
-tmp<-subset(tmp,tmp$DIST_UNE_K > 0)
-tmp<-subset(tmp,tmp$DIST_UNE_N>0)
-tmp<-subset(tmp,tmp$DIST_MEAD > 0)
-tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_ISOS>600)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
-tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
-tmp<-subset(tmp,tmp$DIST_RAD>5000)
-tmp<-subset(tmp,tmp$DIST_FOR>100)
-
-scen_name<-paste("B2_FOR++",cur_dat,sep = "_")
-st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
 ## not exclusion and not reserve (B3)
+
 tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
 tmp<-subset(tmp,tmp$DIST_MEAD > 0)
 tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
 tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
-tmp<-subset(tmp,tmp$DIST_RAD>20000)
-tmp<-subset(tmp,tmp$FFF==0)
-tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
-tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
-tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
 tmp<-subset(tmp,tmp$DIST_BIOS>0)
-tmp<-subset(tmp,tmp$DIST_ISOS>1500)
-tmp<-subset(tmp,tmp$DIST_FOR>0)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+
 
 scen_name<-paste("B3",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
 
-#B3_FOR-
-tmp<-subset(cen,cen$DIST_BLN > 0)
+
+## B3_BLN- (vorb + restriction) but allow WT in BLN
+
+tmp<-subset(cen,cen$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
 tmp<-subset(tmp,tmp$DIST_MEAD > 0)
 tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
 tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
-tmp<-subset(tmp,tmp$DIST_RAD>20000)
-tmp<-subset(tmp,tmp$FFF==0)
-tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
-tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
-tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
 tmp<-subset(tmp,tmp$DIST_BIOS>0)
-tmp<-subset(tmp,tmp$DIST_ISOS>1500)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
 
-scen_name<-paste("B3_FOR-",cur_dat,sep = "_")
+
+scen_name<-paste("B3_BLN-",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-#B3_FOR+
+
+## B3_FOR+ (consider Ausschluss und Vorbehalt and restrict forests)
+
 tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
 tmp<-subset(tmp,tmp$DIST_MEAD > 0)
 tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
 tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
-tmp<-subset(tmp,tmp$DIST_RAD>20000)
-tmp<-subset(tmp,tmp$FFF==0)
-tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
-tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
-tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
 tmp<-subset(tmp,tmp$DIST_BIOS>0)
-tmp<-subset(tmp,tmp$DIST_ISOS>1500)
-tmp<-subset(tmp,tmp$DIST_FOR>50)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$DIST_FOR>0)
 
 scen_name<-paste("B3_FOR+",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
-#B3_FOR++
+## B3_FFF+ (consider Ausschluss und Vorbehalt and restrict FFF)
+
 tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
 tmp<-subset(tmp,tmp$DIST_MEAD > 0)
 tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
-tmp<-subset(tmp,tmp$DIST_NATPA>5000)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
 tmp<-subset(tmp,tmp$DIST_VAEW>0)
-tmp<-subset(tmp,tmp$DIST_MIL>200)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_JB>0)
 tmp<-subset(tmp,tmp$DIST_RAD>20000)
 tmp<-subset(tmp,tmp$FFF==0)
-tmp<-subset(tmp,tmp$DIST_UNE_K > 10000)
-tmp<-subset(tmp,tmp$DIST_UNE_N>10000)
-tmp<-subset(tmp,tmp$DIST_JB>0)
-tmp<-subset(tmp,tmp$DIST_BIOS>0)
-tmp<-subset(tmp,tmp$DIST_ISOS>1500)
-tmp<-subset(tmp,tmp$DIST_FOR>100)
 
-scen_name<-paste("B3_FOR++",cur_dat,sep = "_")
+scen_name<-paste("B3_FFF+",cur_dat,sep = "_")
+st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
+
+
+
+#B4 including further constraints
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$DIST_FOR>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1000)
+tmp<-subset(tmp,tmp$FFF==0)
+
+scen_name<-paste("B4",cur_dat,sep = "_")
+st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
+
+#B4_FFF- possible to build WT in FFF
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$DIST_FOR>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1000)
+
+
+scen_name<-paste("B4_FFF-",cur_dat,sep = "_")
+st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
+
+
+#B4_FOR- possible to build WT in forest
+tmp<-subset(cen,cen$DIST_BLN > 0)
+tmp<-subset(tmp,tmp$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$FFF==0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1000)
+
+scen_name<-paste("B4_FOR-",cur_dat,sep = "_")
+st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
+
+#B4 including further constraints without BLN
+
+tmp<-subset(cen,cen$DIST_HZ>300)
+tmp<-subset(tmp,tmp$DIST_UNE_K > 3000)
+tmp<-subset(tmp,tmp$DIST_UNE_N>0)
+tmp<-subset(tmp,tmp$DIST_MEAD > 0)
+tmp<-subset(tmp,tmp$DIST_FLOOD > 0)
+tmp<-subset(tmp,tmp$DIST_NATPA>2000)
+tmp<-subset(tmp,tmp$DIST_VAEW>0)
+tmp<-subset(tmp,tmp$DIST_MIL>100)
+tmp<-subset(tmp,tmp$DIST_AIR>0)
+tmp<-subset(tmp,tmp$DIST_REG_N>0)
+tmp<-subset(tmp,tmp$DIST_BIOS>0)
+tmp<-subset(tmp,tmp$DIST_JB>0)
+tmp<-subset(tmp,tmp$DIST_RAD>20000)
+tmp<-subset(tmp,tmp$DIST_FOR>0)
+tmp<-subset(tmp,tmp$DIST_ISOS>1000)
+tmp<-subset(tmp,tmp$FFF==0)
+
+scen_name<-paste("B4_BLN-",cur_dat,sep = "_")
 st_write(obj = tmp, dsn = con, Id(schema="scenario", table = scen_name))
 
 ```
@@ -256,7 +329,9 @@ up_targ<-4400000
 #scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
 #scen_names<-as.data.frame(scen_names[c(1:3),])
 
-scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'AND table_name like '%B3%'")
+#scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'AND table_name like '%FFF%'")
+
+scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
 
 #the fitness function calls the three optimization functions. If the energy target is not reached from the individual WT configuration, very high (low) values will be returned
  fitness.fun = function(x){
@@ -407,13 +482,4 @@ for(a in 1:nrow(scen_names)){
 
 ```
 
-#some basic checks
-
-```{r}
-#read out the actual points
-cen1<-st_read(dsn = con, Id(schema="optim_res", table = "B1_FOR+_2020-09-22_res"))
-cen1<-subset(cen1,cen1$amount_min==1)
-sum(cen1$prod_MW)
-
-```
 
