@@ -1,0 +1,276 @@
+---
+title: "WP_3"
+author: "R.Spielhofer"
+date: "31/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(raster)
+require(rgdal)
+require(snow)
+require(mapview)
+require(dplyr)
+require(ggplot2)
+require(sf)
+require(sp)
+require(ecr)
+require(Hmisc)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgres)
+require(rpostgis)
+require(mapview)
+require(maptools)
+require(reticulate)
+require(spatstat)
+require(RPostgreSQL)
+
+
+con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
+                        = "reto89LLSIMI")
+
+
+#st_write(tmp,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
+
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+#import all  points from WP2
+```{r cars}
+
+#cen<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/2_wp/WP_2_fin_200831.shp")
+
+cen<-st_read(dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
+tmp<-st_drop_geometry(cen)
+hist(tmp)
+
+
+
+#correlation analysis between the variables
+correl_metr<-st_drop_geometry(cen)
+correl_metr<-correl_metr[c(5:23)]
+correl_metr<-as.matrix(correl_metr)
+correl_metr<-rcorr(correl_metr, type="pearson")
+corrplot::corrplot(correl_metr$r, method= "circle",  tl.col="black", tl.cex = 1.7,  diag=FALSE)
+
+```
+
+#Objective functions
+This section defines the objectives as a function of x. While x is a binary vector [0,1] with the length specified in the optimization part. 
+```{r helper functions}
+
+ener_dens<-function(x){
+  ener<-sum(x*cen$ENER_DENS)/sum(x)
+  return(ener)
+}  
+
+#counts the amount of WT in a model run
+amount_WT<-function(x){
+  am_WT<-sum(x)
+  return(am_WT)
+}
+
+# The clark evens index (the smaller the value below 0 the more clustered the data is)
+cluster_fun<-function(x){
+  cen$X<-x
+  tmp<-subset(cen,X==1)
+  tmp.ppp<-as.ppp.SpatialPoints(tmp)
+  ce<-clarkevans(tmp.ppp)
+  return(ce[3])
+}
+
+```
+
+
+# The NSGA2 optimization
+```{r}
+#define some empty lists which store the results for each scenario
+fitness_list<-list()
+ScenName_list<-list()
+scen_vec<-vector()
+
+path_last<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitn_last"
+path_arch<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitn_arch"
+
+#these are the boundaries for the wind energy target of Switzerland
+low_targ<-4299000
+up_targ<-4400000
+#low_targ<-1299000
+#up_targ<-1400000
+
+#checking the files in the DB (scenario schema) which have been stored during the previous section
+#scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
+#scen_names<-as.data.frame(scen_names[c(1:3),])
+
+#scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'AND table_name like '%FFF%'")
+
+scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
+
+#the fitness function calls the three optimization functions. If the energy target is not reached from the individual WT configuration, very high (low) values will be returned
+ fitness.fun = function(x){
+  if((sum(x*cen$prod_MW)>low_targ)& (sum(x*cen$prod_MW)<up_targ)){
+    res<-c(ener_dens(x),amount_WT(x),cluster_fun(x))
+  }
+  else{res<-c(-10^20,10^20,10^20)}
+    return(res)
+  }
+
+#global NSGA2 settings
+MU = 100; LAMBDA = MU-5;  MAX.ITER =60000
+ 
+# Here we loop through all scenario files from the DB and calculate the optimization
+for(a in 1:nrow(scen_names)){
+  ScenName_list[a]<-as.character(scen_names[a,])
+
+  #read out the points with the name of the name list at position a
+  cen<-st_read(dsn = con, Id(schema="scenario", table = as.character(scen_names[a,])))
+  cen<-as_Spatial(cen)
+ # cen<-cen[c(1:300),]
+  
+  
+  #the bounds are calculated to establish an initial population which can reach the energy target (we add +- 10% to    the boundaries)
+  bound_up<-up_targ/sum(cen$prod_MW)+0.1*up_targ/sum(cen$prod_MW)
+  bound_low<-low_targ/sum(cen$prod_MW)-0.05*low_targ/sum(cen$prod_MW)
+  
+  
+  #we check if there are enough points to reach the energy target of 4.3TWh/y
+  if(sum(cen$prod_MW)<low_targ | bound_up>1){
+    print(" is not possible to optimize")
+    next
+    #otherwise proceed with the optimization
+  } 
+  else{
+    print(" will be optimized!!")
+    #cen specific NSGA2 settings
+    N.BITS = nrow(cen)
+    #control settings
+    ctrl<-initECRControl(fitness.fun, n.objectives = 3L, minimize = c(FALSE,TRUE,TRUE))
+    ctrl<-registerECROperator(ctrl, "mutate", mutBitflip, p=1/N.BITS)
+    ctrl<-registerECROperator(ctrl, "recombine", recCrossover)
+    ctrl<-registerECROperator(ctrl, "selectForMating", selSimple)
+    ctrl<-registerECROperator(ctrl, "selectForSurvival",  selNondom)
+  
+    #WE NEED TO DEFINE A VECTOR WITH the lower and the upper bounds of ONES and ZEROS in order to reach the target       specified in the goals
+    population<-list()
+    for(i in 1:MU){
+      x3 <- sample(round(100*bound_low):round(100*bound_up), 1)
+      pop_vec<-(sample(1:0, size=nrow(cen), prob=c(x3,100-x3), replace=TRUE))
+      population[[i]]<-pop_vec
+    }
+    #The initial population and it's fitness
+    fitness = evaluateFitness(ctrl , population)
+  
+    #since the compute HV only works for minimized goals, we need to transform the only maximized goal
+    fitness2<-fitness
+    fitness2[1,]<-fitness2[1,]*-1
+   
+    ##Setting up the statistics HV   
+    ref.point<-c(8,1000,1)
+  
+    logger<-initLogger(ctrl,log.stats = list(fitness = list("HV"=list(fun=computeHV, pars = list(ref.point=ref.point)))),log.pop=T,init.size = MAX.ITER+1L)
+    updateLogger(logger,population=population, fitness = fitness2, n.evals=MU)
+  
+    arch<-initParetoArchive(ctrl)
+    
+    ##And here we iterate MAX.iter times through and recombine the individuals to establish optimal solutions for each scenario.
+                                             
+    start<-Sys.time()
+    for(i in seq_len(MAX.ITER)){
+      #offspring<-mutate(ctrl, population, p.mut = 0.9)
+      offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb = 0.6, p.mut = 0.2)
+      fitness.o<-evaluateFitness(ctrl,offspring)
+      #new selection
+      sel<-replaceMuPlusLambda(ctrl, population, offspring, fitness, fitness.o)
+      #selected population
+      population<-sel$population
+      fitness<-sel$fitness
+      fitness2<-fitness
+      fitness2[1,]<-fitness2[1,]*-1
+      
+      
+      updateLogger(logger, population, fitness = fitness2,n.evals = LAMBDA)
+       updateParetoArchive(archive=arch, inds=population, fitness = fitness)
+       
+       if(i%%100 == 0){
+         print(i/MAX.ITER*100)
+       }
+    }
+    end<-Sys.time()
+    print(end-start)
+  
+    stats<-getStatistics(logger)
+    
+    #save HV curve
+    jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,],"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
+    plot(stats)
+    dev.off()
+    
+    #non_dom population and fitness
+    
+    nondomPOP<-getIndividuals(arch)
+    fitn_arch<-evaluateFitness(ctrl , nondomPOP)
+    
+     # as soon as the optimization is finished, the extreme populations are extracted (max enerdens, min evens and minimal amount of WT) in order to map these extreme individuals spatially for each scenario  
+    enerdens_max<-which.max(fitn_arch[1,])
+    enerdens_max<-unlist(nondomPOP[enerdens_max])
+
+    amount_min<-which.min(fitn_arch[2,])
+    amount_min<-unlist(nondomPOP[amount_min])
+
+    #the minimal value of clark even index represents the maximal clustering
+    clus_max<-which.min(fitn_arch[3,])
+    clus_max<-unlist(nondomPOP[clus_max])
+
+    #the extreme individuals are attached to the point layers
+    cen$enerdens_max<-enerdens_max
+    cen$amount_min<-amount_min
+    cen$clus_max<-clus_max
+    
+    ##transpose for saving as csv
+    
+    fitn_arch<-t(fitn_arch)
+    colnames(fitn_arch)<-c("mean_MWH/yHA","number_WT","CE_index")
+    
+    
+    nondom_fit_last<-which(dominated(fitness)==F)
+    nondom_fit_last<-t(fitness[1:3, nondom_fit_last])
+    colnames(nondom_fit_last)<-c("mean_MWH/yHA","number_WT","CE_index")
+   
+
+    #calculate how often each site is in the pareto optimal in order to get a feeling about the confidence of the optimal sites
+    b<-Reduce(`+`, nondomPOP)/length(nondomPOP)
+    c<-Reduce(`+`, population)/length(population)
+    #attach to cen
+    cen$rel_arch_nonDOM<-b
+    cen$rel_last_nonDOM<-c
+  
+    #store cen in the DB with the scenario NAME
+    cen<-st_as_sf(cen)
+    st_write(obj = cen, dsn = con, Id(schema="optim_res_201022", table = as.character(paste(scen_names[a,],"_res",sep=""))))
+ 
+    #and write the population and fitness into csv
+    
+    
+    write.csv(fitn_arch,paste(path_arch,paste(scen_names[a,],"csv",sep="."), sep = "/"))
+    write.csv(nondom_fit_last,paste(path_last,paste(scen_names[a,],"csv",sep="."), sep = "/"))
+    
+    #store the last fitness values of each scenario in the fitness list
+    fitness_list[[paste0(scen_names[a,], a)]]<-nondom_fit_last
+    #and 
+    scen_vec[a]<-scen_names[a,]  
+  
+    print(paste(paste(paste(a, " of total ",sep = ""), nrow(scen_names), sep=""), " scenarios are computed", sep = ""))
+  } 
+}
+
+```
+
+
