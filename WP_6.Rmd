@@ -1,0 +1,522 @@
+---
+title: "Results and PLOTS wind optim project"
+author: "R.Spielhofer"
+date: "22 June 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("stringr")
+
+require(raster)
+require(rgdal)
+require(dplyr)
+require(sf)
+require(sp)
+require(ggplot2)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+require(ggpubr)
+require(spatstat)
+require(gdalUtils)
+require(reticulate)
+require(tidyr)
+require(maptools)
+require(RPostgres)
+require(stringr)
+require(car)
+library(onewaytests)
+require(rstatix)
+require(ggsci)
+```
+
+## Data read in
+```{r}
+in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all_201019.csv")
+cur_dat<-Sys.Date()
+
+in_dat$group<-as.factor(in_dat$group)
+group_names<-levels(in_dat$group)
+in_dat$SCENARIO<-as.factor(in_dat$SCENARIO)
+scen_names<-levels(in_dat$SCENARIO)
+in_dat$frame_policy<-as.factor(in_dat$frame_policy)
+in_dat$restr<-as.factor(in_dat$restr)
+
+
+in_dat$restr <- factor(in_dat$restr,levels = c( "base","-","+"))
+in_dat$frame_policy <- factor(in_dat$frame_policy,levels = c("B1","B2","B3","B4"))
+frame_names<-levels(in_dat$frame_policy)
+
+conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
+                      user = "postgres", password = "reto89LLSIMI")
+
+scen_names<-dbGetQuery(conn,"SELECT table_name FROM information_schema.tables WHERE table_schema='optim_res_201005'")
+
+B1<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[23,])))
+B2<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[14,])))
+B3<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[9,])))
+B4<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[18,])))
+
+
+bound<-st_read(dsn= conn, Id(schema="GEO_base_data", table = "CH_boundaries"))
+bound<-st_transform(bound,crs = "+init=epsg:21781") 
+```
+
+
+##some maps
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+
+
+#interactive
+mapview::mapview(B1,zcol="prod_MW")
+
+
+
+
+map_tmp<-ggplot(data = bound) +
+    geom_sf() +
+     geom_sf(data = B4, aes(color = prod_MW))
+
+#B4 and KIBK
+df_B4<-st_drop_geometry(B4)
+hist(df_B4$KIBK)
+    
+```
+
+##First question
+"What is the effect on (n_WT, clustering, energy density) between the four national frame policies (B1,B2,B3,B4)"
+
+
+```{r}
+
+#1. What is the effect on (n_WT, clustering, energy density) between the three national frame policies (B1,B2,B3,B4)
+#subsetting for testing
+d<-subset(in_dat,in_dat$SCENARIO=="B1")
+a<-subset(in_dat,in_dat$SCENARIO=="B2")
+b<-subset(in_dat,in_dat$SCENARIO=="B3")
+c<-subset(in_dat,in_dat$SCENARIO=="B4")
+my_comparisons <- list( c("B1", "B2"), c("B1", "B3"), c("B1", "B4"), c("B2", "B3"), c("B2", "B4"), c("B3", "B4") )
+
+all<-rbind(a,b,c,d)
+
+### Number of WT
+#1. CHECK FOR NORMAL distribution
+
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(number_WT)
+
+ #homogeneity of variance
+levene_test(all,number_WT~frame_policy,center = mean)
+
+#since the normality is not strongly violated, we have 80 records per group and variance homogeneity, we assume ANOVA preconditions as given:
+
+anov<-aov(number_WT~frame_policy,data=all)
+compare_means(number_WT~frame_policy,data = all, method = "anova")
+
+
+#graphical check
+a<-ggboxplot(all, x = "SCENARIO", y = "number_WT", 
+        ylab = "n_WT", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B1", 
+                     method = "t.test" )+
+  stat_compare_means(label.y = 1200,method="anova") #the global
+
+
+## CE
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(CE_index)
+
+levene_test(all,CE_index~frame_policy,center = mean) #homogeneity of variance
+
+#graphical check
+b<-ggboxplot(all, x = "SCENARIO", y = "CE_index", 
+        ylab = "CE_ind", xlab = "SCENARIO")+
+   stat_compare_means(comparisons = my_comparisons, label = "p.signif",
+                     ref.group = "B1", method="t.test" )+
+  stat_compare_means(label.y = .5, method = "anova")
+
+anov<-aov(CE_index~frame_policy,data=all)
+summary(anov)
+TukeyHSD(anov,"frame_policy")
+
+
+## enerdens
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(mean_MWH.yHA)
+
+levene_test(all,mean_MWH.yHA~frame_policy,center = mean) #homogeneity of variance is given
+
+#since homogeneity of variance is not given and we have violations of normality, we perform a Welch-Test
+#if levene p<.05 thus a welch test should be performed, since variances are not homogen
+compare_means(mean_MWH.yHA~SCENARIO,all)
+
+
+
+#graphical check
+c<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA", 
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
+   stat_compare_means(comparisons = my_comparisons, label = "p.signif",
+                     ref.group = "B1" )+
+  stat_compare_means(label.y = 1.1)
+
+plot_tmp<-ggarrange(a, b, c,  ncol = 1,nrow = 3, labels = "auto")
+
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q1/",paste(cur_dat,"all.jpg",sep="_"),sep=""),width = 1500, height = 1000)
+plot(plot_tmp)
+dev.off()
+
+## B4 is different from all other, B1,B2,B3 have equal energy densities
+
+```
+
+## common point B1, B2, B4, B4
+```{r}
+conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
+                      user = "postgres", password = "reto89LLSIMI")
+
+a<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B1_2020-10-09_res"))
+tmpA<-subset(a,a$sum_pop_pareto==80)
+b<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B2_2020-10-08_res"))
+tmpB<-subset(b,b$sum_pop_pareto==80)
+c<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_2020-10-08_res"))
+tmpC<-subset(c,c$sum_pop_pareto==80)
+d<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_2020-10-10_res"))
+tmpD<-subset(d,d$sum_pop_pareto==80)
+
+g<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_FFF-_2020-10-08_res"))
+tmpG<-subset(g,g$sum_pop_pareto==80)
+
+#all together
+all<-rbind(tmpC,tmpD)
+count_ID<-all%>%count(WT_ID)
+
+commonB3_B4<-all[duplicated(all$WT_ID), ]
+all_common<-all[!duplicated(all$WT_ID), ]
+
+map_sec<-ggplot(commonB3_B4) +
+    geom_sf(data = bound, fill = NA, color = "gray", size=.8)+
+    geom_sf(data = commonB3_B4)
+    theme_light()+
+   theme(axis.text=element_text(size=10))
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/sec_maps/",paste(ScenName,"_sec_pareto_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
+plot(map_sec)
+dev.off()
+```
+
+
+
+## Second question (s)
+2.1 What is the effect on (n_WT, clustering, energy density) when protecting or allowing the FOREST from WT?
+
+```{r}
+#
+#subsetting FOREST
+
+all<-subset(in_dat, in_dat$SCENARIO=="B3_FOR+" |  in_dat$SCENARIO=="B3" | in_dat$SCENARIO=="B4" | in_dat$SCENARIO=="B4_ISOS-" | in_dat$SCENARIO=="B4_FFF-")
+
+all$SCENARIO<-recode(all$SCENARIO,"B4_ISOS-" = "B3_FOR+_FFF+", "B4_FFF-" = "B3_FOR+_ISOS+" )
+ ord <- c("B3","B3_FOR+","B3_FOR+_ISOS+","B3_FOR+_FFF+","B4")
+all$SCENARIO <- factor(all$SCENARIO,levels=ord)
+
+
+my_comparisons <- list( c("B3", "B3_FOR+"), c("B3_FOR+", "B3_FOR+_ISOS+"),c("B3_FOR+", "B3_FOR+_FFF+"), c("B3_FOR+", "B4"))
+
+### Number of WT
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(number_WT) #not normally distributed but not strongly violated
+# homogeneity of var
+levene_test(all,number_WT~SCENARIO,center = mean) #seems to have +- equal variances between scen
+
+#graphical check
+nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT",
+        ylab = "n_WT", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif",
+                      method="t.test" )+
+ theme(legend.position = "none")
+
+############################ CE
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(CE_index)
+
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
+
+#graphical check
+CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index",
+        ylab = "CE_ind", xlab = "SCENARIO")+
+        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
+  theme(legend.position = "none")
+
+################# enerdens
+#1. CHECK FOR NORMAL DISTR
+
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(mean_MWH.yHA)
+
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
+
+#graphical check
+enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA", 
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
+  theme(legend.position = "none")
+
+plot_tmp<-ggarrange(nWT, CE, enerdens,  ncol = 3,nrow = 1, labels = c("Min number WT", "best clustering (min)", "Max energy density"))
+plot_tmp
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"FOR.jpg",sep="_"),sep=""),width = 1500, height = 1000)
+plot(plot_tmp)
+dev.off()
+```
+
+
+2.2 What is the effect on (n_WT, clustering, energy density) when protecting or allowing the ISOS from WT?
+
+```{r}
+#
+#subsetting ISOS
+
+all<-subset(in_dat, in_dat$SCENARIO=="B3_ISOS+" |  in_dat$SCENARIO=="B3" | in_dat$SCENARIO=="B4" | in_dat$SCENARIO=="B4_FFF-" | in_dat$SCENARIO=="B4_FOR-")
+
+all$SCENARIO<-recode(all$SCENARIO,"B4_FOR-" = "B3_ISOS+_FFF+", "B4_FFF-" = "B3_ISOS+_FOR+" )
+
+ord <- c("B3","B3_ISOS+","B3_ISOS+_FOR+","B3_ISOS+_FFF+","B4")
+all$SCENARIO <- factor(all$SCENARIO,levels=ord)
+
+
+my_comparisons <- list( c("B3", "B3_ISOS+"), c("B3_ISOS+", "B3_ISOS+_FOR+"),c("B3_ISOS+", "B3_ISOS+_FFF+"), c("B3_ISOS+", "B4"))
+
+### Number of WT
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(number_WT) #not normally distributed but not strongly violated
+# homogeneity of var
+levene_test(all,number_WT~SCENARIO,center = mean) #seems to have +- equal variances between scen
+
+#graphical check
+nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT",
+        ylab = "n_WT", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif",
+                      method="t.test" )+
+  theme(legend.position = "none")
+
+############################ CE
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(CE_index)
+
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
+
+#graphical check
+CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index",
+        ylab = "CE_ind", xlab = "SCENARIO")+
+        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
+         theme(legend.position = "none")
+
+################# enerdens
+#1. CHECK FOR NORMAL DISTR
+
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(mean_MWH.yHA)
+
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
+
+#graphical check
+enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA",
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
+    theme(legend.position = "none")
+
+plot_tmp<-ggarrange(nWT, CE, enerdens,  ncol = 3,nrow = 1, labels = c("Min number WT", "best clustering (min)", "Max energy density"))
+plot_tmp
+
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"FOR.jpg",sep="_"),sep=""),width = 1500, height = 1000)
+plot(plot_tmp)
+dev.off()
+```
+
+2.3 What is the effect on (n_WT, clustering, energy density) when protecting or allowing the FFF from WT?
+
+```{r}
+#
+#subsetting FFF
+
+all<-subset(in_dat, in_dat$SCENARIO=="B3_FFF+" |  in_dat$SCENARIO=="B3" | in_dat$SCENARIO=="B4" | in_dat$SCENARIO=="B4_ISOS-" | in_dat$SCENARIO=="B4_FOR-")
+
+all$SCENARIO<-recode(all$SCENARIO,"B4_FOR-" = "B3_FFF+_ISOS+", "B4_ISOS-" = "B3_FFF+_FOR+" )
+
+ord <- c("B3","B3_FFF+","B3_FFF+_FOR+","B3_FFF+_ISOS+","B4")
+all$SCENARIO <- factor(all$SCENARIO,levels=ord)
+
+
+my_comparisons <- list( c("B3", "B3_FFF+"), c("B3_FFF+", "B3_FFF+_FOR+"),c("B3_FFF+", "B3_FFF+_ISOS+"), c("B3_FFF+", "B4"))
+
+### Number of WT
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(number_WT) #not normally distributed but not strongly violated
+# homogeneity of var
+levene_test(all,number_WT~SCENARIO,center = mean) #seems to have +- equal variances between scen
+
+#graphical check
+nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT",
+        ylab = "n_WT", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
+      theme(legend.position = "none")
+
+########################### CE
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(CE_index)
+
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
+
+#graphical check
+CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index",
+        ylab = "CE_ind", xlab = "SCENARIO")+
+        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
+        theme(legend.position = "none")
+
+################# enerdens
+#1. CHECK FOR NORMAL DISTR
+
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(mean_MWH.yHA)
+
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
+
+#graphical check
+enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA",
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
+        theme(legend.position = "none")
+
+plot_tmp<-ggarrange(nWT, CE, enerdens,  ncol = 3,nrow = 1, labels = c("Min number WT", "best clustering (min)", "Max energy density"))
+plot_tmp
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"FOR.jpg",sep="_"),sep=""),width = 1500, height = 1000)
+plot(plot_tmp)
+dev.off()
+```
+
+
+##Effects
+
+```{r}
+in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all_201019_Q2.csv")
+
+#first instance (B3_FIR+, B3_FFF+, B3_ISOS)
+all<-subset(in_dat, in_dat$SCENARIO=="B3_FFF+" |  in_dat$SCENARIO=="B3_FOR+" | in_dat$SCENARIO=="B3_ISOS+" | in_dat$SCENARIO=="B3")
+summary(aov(number_WT~group,all))
+
+my_comparisons <- list( c("B3_FOR+", "B3_FFF+"), c("B3_FOR+", "B3_ISOS+"),c("B3_ISOS+", "B3_FFF+"),c("B3_FOR+", "B3"), c("B3", "B3_ISOS+"),c("B3", "B3_FFF+"))
+pairwise.t.test(in_dat$number_WT, in_dat$SCENARIO, p.adj = "none")
+pairwise.t.test(in_dat$CE_index, in_dat$SCENARIO, p.adj = "none")
+pairwise.t.test(in_dat$mean_MWH.yHA, in_dat$SCENARIO, p.adj = "none")
+compare_means(number_WT~SCENARIO,in_dat)
+
+### Number of WT
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(number_WT) #not normally distributed but not strongly violated
+# homogeneity of var
+levene_test(all,number_WT~SCENARIO,center = mean) #seems to have +- equal variances between scen
+
+#graphical check
+nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT",
+        ylab = "n_WT", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
+      theme(legend.position = "none")
+
+### Number CE
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(CE_index) #not normally distributed but not strongly violated
+# homogeneity of var
+levene_test(all,CE_index~SCENARIO,center = mean) #seems to have +- equal variances between scen
+
+compare_means(CE_index~SCENARIO,all)
+
+#graphical check
+CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index",
+        ylab = "CE_ind", xlab = "SCENARIO")+
+        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
+        theme(legend.position = "none")
+
+### Number enerdens
+#1. CHECK FOR NORMAL DISTR
+all %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(mean_MWH.yHA) #not normally distributed but not strongly violated
+# homogeneity of var
+levene_test(all,mean_MWH.yHA~SCENARIO,center = mean) #seems to have +- equal variances between scen
+
+compare_means(mean_MWH.yHA~SCENARIO,all)
+
+#graphical check
+enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA",
+        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
+        theme(legend.position = "none")
+
+### effect of instance
+summary(aov(number_WT~group+instance,in_dat))
+compare_means(number_WT~instance,in_dat, )
+welch.test(number_WT~instance,in_dat)
+
+```
+```{r}
+conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
+                      user = "postgres", password = "reto89LLSIMI")
+
+B3_FOR<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_FOR+_2020-10-08_res"))
+
+B3<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_2020-10-08_res"))
+
+tmp_joined <- st_join(B3,B3_FOR)
+tmp_joined <-tmp_joined [,-c(43:83)]
+names(tmp_joined)[names(tmp_joined) == "sum_pop_pareto.y"] <- "sum_popPAR_B3_FOR"
+names(tmp_joined)[names(tmp_joined) == "sum_pop_pareto.x"] <- "sum_popPAR_B3"
+tmp_joined[c("sum_popPAR_B3_FOR")][is.na(tmp_joined[c("sum_popPAR_B3_FOR")])] <- 0
+tmp_joined$delta<-tmp_joined$sum_popPAR_B3-tmp_joined$sum_popPAR_B3_FOR
+tmpINFOR<-subset(tmp_joined,tmp_joined$DIST_FOR.x<1)
+mapview::mapview(tmpINFOR,zcol="delta")
+
+```
+
+
