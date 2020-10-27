@@ -9,7 +9,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-install.packages("stringr")
 
 require(raster)
 require(rgdal)
@@ -34,34 +33,27 @@ require(car)
 library(onewaytests)
 require(rstatix)
 require(ggsci)
+require(caret)
 ```
 
 ## Data read in
 ```{r}
-in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all_201019.csv")
+in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/TEST_FOR_201026_B.csv")
 cur_dat<-Sys.Date()
 
-in_dat$group<-as.factor(in_dat$group)
-group_names<-levels(in_dat$group)
 in_dat$SCENARIO<-as.factor(in_dat$SCENARIO)
 scen_names<-levels(in_dat$SCENARIO)
-in_dat$frame_policy<-as.factor(in_dat$frame_policy)
-in_dat$restr<-as.factor(in_dat$restr)
 
-
-in_dat$restr <- factor(in_dat$restr,levels = c( "base","-","+"))
-in_dat$frame_policy <- factor(in_dat$frame_policy,levels = c("B1","B2","B3","B4"))
-frame_names<-levels(in_dat$frame_policy)
 
 conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
                       user = "postgres", password = "reto89LLSIMI")
 
 scen_names<-dbGetQuery(conn,"SELECT table_name FROM information_schema.tables WHERE table_schema='optim_res_201005'")
 
-B1<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[23,])))
-B2<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[14,])))
-B3<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[9,])))
-B4<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[18,])))
+
+B3<-st_read(dsn = conn, Id(schema="optim_res_201022", table = "B3_201026_60K"))
+B3_FOR<-st_read(dsn = conn, Id(schema="optim_res_201022", table = "B3_FOR+_201026_60K"))
+B3_1027<-st_read(dsn = conn, Id(schema="optim_res_201022", table = "B3_60k_1027"))
 
 
 bound<-st_read(dsn= conn, Id(schema="GEO_base_data", table = "CH_boundaries"))
@@ -78,9 +70,6 @@ You can also embed plots, for example:
 
 #interactive
 mapview::mapview(B1,zcol="prod_MW")
-
-
-
 
 map_tmp<-ggplot(data = bound) +
     geom_sf() +
@@ -100,23 +89,22 @@ hist(df_B4$KIBK)
 
 #1. What is the effect on (n_WT, clustering, energy density) between the three national frame policies (B1,B2,B3,B4)
 #subsetting for testing
-d<-subset(in_dat,in_dat$SCENARIO=="B1")
-a<-subset(in_dat,in_dat$SCENARIO=="B2")
-b<-subset(in_dat,in_dat$SCENARIO=="B3")
-c<-subset(in_dat,in_dat$SCENARIO=="B4")
-my_comparisons <- list( c("B1", "B2"), c("B1", "B3"), c("B1", "B4"), c("B2", "B3"), c("B2", "B4"), c("B3", "B4") )
 
-all<-rbind(a,b,c,d)
+b<-subset(in_dat,in_dat$SCENARIO=="B3")
+c<-subset(in_dat,in_dat$SCENARIO=="B3_FOR+")
+my_comparisons <- list( c("B3", "B3_FOR+") )
+
+all<-rbind(c,b)
 
 ### Number of WT
 #1. CHECK FOR NORMAL distribution
 
-all %>%
+in_dat %>%
   group_by(SCENARIO) %>%
   shapiro_test(number_WT)
 
  #homogeneity of variance
-levene_test(all,number_WT~frame_policy,center = mean)
+levene_test(in_dat,number_WT~SCENARIO,center = mean)
 
 #since the normality is not strongly violated, we have 80 records per group and variance homogeneity, we assume ANOVA preconditions as given:
 
@@ -125,9 +113,9 @@ compare_means(number_WT~frame_policy,data = all, method = "anova")
 
 
 #graphical check
-a<-ggboxplot(all, x = "SCENARIO", y = "number_WT", 
+a<-ggboxplot(in_dat, x = "SCENARIO", y = "number_WT", 
         ylab = "n_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B1", 
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B3", 
                      method = "t.test" )+
   stat_compare_means(label.y = 1200,method="anova") #the global
 
@@ -141,7 +129,7 @@ all %>%
 levene_test(all,CE_index~frame_policy,center = mean) #homogeneity of variance
 
 #graphical check
-b<-ggboxplot(all, x = "SCENARIO", y = "CE_index", 
+b<-ggboxplot(in_dat, x = "SCENARIO", y = "CE_index", 
         ylab = "CE_ind", xlab = "SCENARIO")+
    stat_compare_means(comparisons = my_comparisons, label = "p.signif",
                      ref.group = "B1", method="t.test" )+
@@ -167,7 +155,7 @@ compare_means(mean_MWH.yHA~SCENARIO,all)
 
 
 #graphical check
-c<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA", 
+c<-ggboxplot(in_dat, x = "SCENARIO", y = "mean_MWH.yHA", 
         ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
    stat_compare_means(comparisons = my_comparisons, label = "p.signif",
                      ref.group = "B1" )+
@@ -182,41 +170,6 @@ dev.off()
 
 ## B4 is different from all other, B1,B2,B3 have equal energy densities
 
-```
-
-## common point B1, B2, B4, B4
-```{r}
-conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
-                      user = "postgres", password = "reto89LLSIMI")
-
-a<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B1_2020-10-09_res"))
-tmpA<-subset(a,a$sum_pop_pareto==80)
-b<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B2_2020-10-08_res"))
-tmpB<-subset(b,b$sum_pop_pareto==80)
-c<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_2020-10-08_res"))
-tmpC<-subset(c,c$sum_pop_pareto==80)
-d<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_2020-10-10_res"))
-tmpD<-subset(d,d$sum_pop_pareto==80)
-
-g<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_FFF-_2020-10-08_res"))
-tmpG<-subset(g,g$sum_pop_pareto==80)
-
-#all together
-all<-rbind(tmpC,tmpD)
-count_ID<-all%>%count(WT_ID)
-
-commonB3_B4<-all[duplicated(all$WT_ID), ]
-all_common<-all[!duplicated(all$WT_ID), ]
-
-map_sec<-ggplot(commonB3_B4) +
-    geom_sf(data = bound, fill = NA, color = "gray", size=.8)+
-    geom_sf(data = commonB3_B4)
-    theme_light()+
-   theme(axis.text=element_text(size=10))
-
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/sec_maps/",paste(ScenName,"_sec_pareto_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
-plot(map_sec)
-dev.off()
 ```
 
 
@@ -432,91 +385,122 @@ plot(plot_tmp)
 dev.off()
 ```
 
-
-##Effects
-
+## security analysis I
+Which wind turbines in restricted areas (FOR, FFF or ISOS) are of interest in order to support the overall optimized allocation goal?
 ```{r}
-in_dat<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/all_201019_Q2.csv")
 
-#first instance (B3_FIR+, B3_FFF+, B3_ISOS)
-all<-subset(in_dat, in_dat$SCENARIO=="B3_FFF+" |  in_dat$SCENARIO=="B3_FOR+" | in_dat$SCENARIO=="B3_ISOS+" | in_dat$SCENARIO=="B3")
-summary(aov(number_WT~group,all))
+#merge the two data frames
 
-my_comparisons <- list( c("B3_FOR+", "B3_FFF+"), c("B3_FOR+", "B3_ISOS+"),c("B3_ISOS+", "B3_FFF+"),c("B3_FOR+", "B3"), c("B3", "B3_ISOS+"),c("B3", "B3_FFF+"))
-pairwise.t.test(in_dat$number_WT, in_dat$SCENARIO, p.adj = "none")
-pairwise.t.test(in_dat$CE_index, in_dat$SCENARIO, p.adj = "none")
-pairwise.t.test(in_dat$mean_MWH.yHA, in_dat$SCENARIO, p.adj = "none")
-compare_means(number_WT~SCENARIO,in_dat)
+B_join<-st_join(B3, B3_FOR)
+B_join<-B_join[,-c(43:84)]
+names(B_join)[names(B_join) == "rel_arch_nonDOM.y"] <- "rel_arch_B3_FOR"
+B_join[c("rel_arch_B3_FOR")][is.na(B_join[c("rel_arch_B3_FOR")])] <- 0
 
-### Number of WT
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(number_WT) #not normally distributed but not strongly violated
-# homogeneity of var
-levene_test(all,number_WT~SCENARIO,center = mean) #seems to have +- equal variances between scen
 
-#graphical check
-nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT",
-        ylab = "n_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
-      theme(legend.position = "none")
+#we calculate the difference between the "security" of wind turbines of B3 and B3_FOR+
+B_join$delt_B3_B3FOR<-B_join$rel_arch_nonDOM.x-B_join$rel_arch_B3_FOR
 
-### Number CE
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(CE_index) #not normally distributed but not strongly violated
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems to have +- equal variances between scen
+mapview::mapview(subset(B_join,B_join$rel_arch_nonDOM.x>.85),zcol="rel_arch_nonDOM.x")
 
-compare_means(CE_index~SCENARIO,all)
+#subset the within and a not within WT locations
+IN_FOR<-subset(B_join,B_join$DIST_FOR.x<1)
+NOT_INFOR<-subset(B_join,B_join$DIST_FOR.x>1)
 
-#graphical check
-CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index",
-        ylab = "CE_ind", xlab = "SCENARIO")+
-        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
-        theme(legend.position = "none")
+#map the not in forest points according to their differences of the scenarios
+#++ values indicate that the WT is very important in B3 but not when FOR is restricted in B3_FOR+
+#-- WT is very important when restricting FOR but not when FOR everything is allowed.
+mapview::mapview(subset(NOT_INFOR,NOT_INFOR$delt_B3_B3FOR>.5 | NOT_INFOR$delt_B3_B3FOR<.5*-1),zcol="delt_B3_B3FOR")
 
-### Number enerdens
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(mean_MWH.yHA) #not normally distributed but not strongly violated
-# homogeneity of var
-levene_test(all,mean_MWH.yHA~SCENARIO,center = mean) #seems to have +- equal variances between scen
+#map the differences between B3 and B3_FOR+
+# in FOREST
+mapview::mapview(subset(B_join,B_join$DIST_FOR.x<1),zcol="delt_B3_B3FOR")
+#the high positive values show important points within forests in SCENARIO B3
 
-compare_means(mean_MWH.yHA~SCENARIO,all)
+#not in FOREST
+mapview::mapview(subset(B_join,B_join$DIST_FOR.x>1 & (B_join$delt_B3_B3FOR<0.5*-1| B_join$delt_B3_B3FOR>0.5)),zcol="delt_B3_B3FOR")
+#the low negative values show that the WT is not important in the B3 scenario, but becomes very important when restricting the forest
 
-#graphical check
-enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA",
-        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
-        theme(legend.position = "none")
+###show optimal, secure solutions within B3 to fulfill the 4.3 TWH/y
+tmpA<-B_join[with(B_join, order(B_join$rel_arch_nonDOM.x,decreasing = T)), ]
 
-### effect of instance
-summary(aov(number_WT~group+instance,in_dat))
-compare_means(number_WT~instance,in_dat, )
-welch.test(number_WT~instance,in_dat)
+#while loop to sum prod MW until 4300000 MWh/y is reached
+sum_prod = 0
+ind=0
 
-```
-```{r}
-conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
-                      user = "postgres", password = "reto89LLSIMI")
+for(i in 1:nrow(tmpA)){
+ if(sum_prod>4300000){
+   break
+   print(i)
+  }
+  tmp_prod<-tmpA$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
+}
 
-B3_FOR<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_FOR+_2020-10-08_res"))
+#create a subset to map  
+tmpA<-tmpA[1:i,]
 
-B3<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_2020-10-08_res"))
+tmpA%>%tmpA$DIST_FOR.x<1
+mapview::mapview(tmpA,zcol="delt_B3_B3FOR")
 
-tmp_joined <- st_join(B3,B3_FOR)
-tmp_joined <-tmp_joined [,-c(43:83)]
-names(tmp_joined)[names(tmp_joined) == "sum_pop_pareto.y"] <- "sum_popPAR_B3_FOR"
-names(tmp_joined)[names(tmp_joined) == "sum_pop_pareto.x"] <- "sum_popPAR_B3"
-tmp_joined[c("sum_popPAR_B3_FOR")][is.na(tmp_joined[c("sum_popPAR_B3_FOR")])] <- 0
-tmp_joined$delta<-tmp_joined$sum_popPAR_B3-tmp_joined$sum_popPAR_B3_FOR
-tmpINFOR<-subset(tmp_joined,tmp_joined$DIST_FOR.x<1)
-mapview::mapview(tmpINFOR,zcol="delta")
 
 ```
 
+#what makes the WT positive or negative?
+```{r}
+nonSp<-st_drop_geometry(B_join)
+
+preProcess_range_model <- preProcess(nonSp[,c(4:15,17:24,26:30,32,34,35,45)], 
+                        method = c("center", "scale", "nzv"))
+preProcess_range_model$method
+
+PRED <- predict(preProcess_range_model, newdata = nonSp[,c(4:15,17:24,26:30,32,34,35,45)])
+
+
+# Step 1: Get row numbers for the training data
+trainRowNumbers <- createDataPartition(PRED$delt_B3_B3FOR, p=0.7, list=FALSE)
+# Step 2: Create the training  dataset
+trainset <- PRED[trainRowNumbers,]
+# Step 3: Create the test dataset
+testset <- PRED[-trainRowNumbers,]
+
+outcomeName <- variable.names(PRED[29])
+pred_names<-variable.names(PRED[,c(1:28)])
+# Define the train control
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, savePredictions = T,   verboseIter = FALSE)
+
+##----------RF tune
+mtry <- sqrt(ncol(trainset[,pred_names]))
+RFtune <- expand.grid(mtry=mtry)
+#simple
+start<-Sys.time()
+#rf_mod<-train(trainset[,pred_names],  as.factor(trainset[,outcomeName]), method = "rf")
+rf_B3<-train(trainset[,pred_names],  trainset[,outcomeName], method = "rf",trControl = fitControl,tunegrid=RFtune)
+end<-Sys.time()
+end-start
+
+varimp_B3 <- varImp(rf_B3)
+plot(varimp_B3)
+VARIMP_B3<-varimp_B3$importance
+write.csv(VARIMP_B3,"C:/Users/spreto/Desktop/B3.csv")
+```
+
+##variable importance with other statistics
+```{r}
+B_join$sec_catB3[B_join$delt_B3_B3FOR< 0] <- "wt_imp_plusFOR"
+B_join$sec_catB3[B_join$delt_B3_B3FOR> 0] <- "wt_imp_B3"
+
+# Convert the column to a factor
+B_join$sec_catB3 <- factor(B_join$sec_catB3)
+B_join<-st_drop_geometry(B_join)
+
+B_join<-B_join[,c(4:15,17:24,26:30,32,34,35,46)]
+
+mod<-list()
+for(i in 1:28){
+    fmla <- formula(paste(names(B_join)[i], " ~ sec_catB3"))
+    mod[[i]]<-wilcox.test(fmla, data = B_join, paired = FALSE)
+}
+
+tapply(B_join$DIST_UNE_N.x,B_join$sec_cat,mean)
+```
 

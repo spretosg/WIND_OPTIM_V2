@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 ---
 title: "WP_3"
 author: "R.Spielhofer"
@@ -100,7 +100,7 @@ scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHE
   }
 
 #global NSGA2 settings
-MU = 100; LAMBDA = MU-5;  MAX.ITER =60000
+MU = 100; LAMBDA = MU-40;  MAX.ITER =60000
  
 # Here we loop through all scenario files from the DB and calculate the optimization
 for(a in 1:nrow(scen_names)){
@@ -161,7 +161,7 @@ for(a in 1:nrow(scen_names)){
     start<-Sys.time()
     for(i in seq_len(MAX.ITER)){
       #offspring<-mutate(ctrl, population, p.mut = 0.9)
-      offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb = 0.6, p.mut = 0.2)
+      offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb = 0.7, p.mut = 0.4)
       fitness.o<-evaluateFitness(ctrl,offspring)
       #new selection
       sel<-replaceMuPlusLambda(ctrl, population, offspring, fitness, fitness.o)
@@ -186,6 +186,12 @@ for(a in 1:nrow(scen_names)){
     
     #save HV curve
     jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,],"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
+    plot(stats)
+    dev.off()
+    
+    
+    #save HV curve
+    jpeg(file="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/rec_07_mutprob04_MU40_HV.jpg",width = 500, height = 300)
     plot(stats)
     dev.off()
     
@@ -230,7 +236,7 @@ for(a in 1:nrow(scen_names)){
   
     #store cen in the DB with the scenario NAME
     cen<-st_as_sf(cen)
-    st_write(obj = cen, dsn = con, Id(schema="optim_res_201022", table = as.character(paste(scen_names[a,],"_res",sep=""))))
+    st_write(obj = cen, dsn = con, Id(schema="optim_res_201022", table = as.character(paste(scen_names[a,],"_60k_1027",sep=""))))
  
     #and write the population and fitness into csv
     
