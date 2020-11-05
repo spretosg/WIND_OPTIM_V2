@@ -67,11 +67,16 @@ cluster_fun<-function(x){
 
 
 # The NSGA2 optimization
+
+## general settings
 ```{r}
 #define some empty lists which store the results for each scenario
 fitness_list<-list()
 ScenName_list<-list()
 scen_vec<-vector()
+
+bound<-st_read(dsn= con, Id(schema="GEO_base_data", table = "CH_boundaries"))
+bound<-st_transform(bound,crs = "+init=epsg:21781") 
 
 path_last<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitn_last"
 path_arch<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/fitn_archive"
@@ -79,14 +84,8 @@ path_arch<-"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_w
 #these are the boundaries for the wind energy target of Switzerland
 low_targ<-4299000
 up_targ<-4400000
-#low_targ<-1299000
-#up_targ<-1400000
-
-#checking the files in the DB (scenario schema) which have been stored during the previous section
-#scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
-#scen_names<-as.data.frame(scen_names[c(1:3),])
-
-#scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'AND table_name like '%FFF%'")
+low_targ<-1299000
+up_targ<-1400000
 
 scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHERE table_schema='scenario'")
 
@@ -97,11 +96,25 @@ scen_names<-dbGetQuery(con,"SELECT table_name FROM information_schema.tables WHE
   }
   else{res<-c(-10^20,10^20,10^20)}
     return(res)
-  }
+ }
+ 
+ MU = 80; LAMBDA = MU-40;  MAX.ITER =300
+ p.recomb =c(0.5,0.7)
+ p.mut = c(0.2,0.4)
+ #the baseline points
+   #read out the points with the name of the name list at position a
+  base<-st_read(dsn = con, Id(schema="scenario", table = "B3_2020-10-21"))
+  base<-as_Spatial(base)
+ 
+```
+
+
+```{r}
+
 
 #global NSGA2 settings
-MU = 100; LAMBDA = MU-40;  MAX.ITER =60000
- 
+
+
 # Here we loop through all scenario files from the DB and calculate the optimization
 for(a in 1:nrow(scen_names)){
   ScenName_list[a]<-as.character(scen_names[a,])
@@ -109,7 +122,7 @@ for(a in 1:nrow(scen_names)){
   #read out the points with the name of the name list at position a
   cen<-st_read(dsn = con, Id(schema="scenario", table = as.character(scen_names[a,])))
   cen<-as_Spatial(cen)
- # cen<-cen[c(1:300),]
+  cen<-cen[c(1:300),]
   
   
   #the bounds are calculated to establish an initial population which can reach the energy target (we add +- 10% to    the boundaries)
@@ -125,6 +138,8 @@ for(a in 1:nrow(scen_names)){
   } 
   else{
     print(" will be optimized!!")
+    for (n in 1:length(p.mut)){ 
+       print(paste(paste(paste( " with p.mut= ", p.mut[n], sep = ""), " and p.recomb =", sep=""), p.recomb[n], sep = ""))
     #cen specific NSGA2 settings
     N.BITS = nrow(cen)
     #control settings
@@ -161,7 +176,7 @@ for(a in 1:nrow(scen_names)){
     start<-Sys.time()
     for(i in seq_len(MAX.ITER)){
       #offspring<-mutate(ctrl, population, p.mut = 0.9)
-      offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb = 0.7, p.mut = 0.4)
+      offspring<-generateOffspring(ctrl, population, fitness, LAMBDA, p.recomb[n], p.mut[n])
       fitness.o<-evaluateFitness(ctrl,offspring)
       #new selection
       sel<-replaceMuPlusLambda(ctrl, population, offspring, fitness, fitness.o)
@@ -185,16 +200,11 @@ for(a in 1:nrow(scen_names)){
     stats<-getStatistics(logger)
     
     #save HV curve
-    jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,],"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
+    jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/",paste(scen_names[a,], paste (p.recomb[n],p.mut[n],sep="_"),"_HV.jpg",sep=""),sep=""),width = 500, height = 300)
     plot(stats)
     dev.off()
     
-    
-    #save HV curve
-    jpeg(file="D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/HV_curves/rec_07_mutprob04_MU40_HV.jpg",width = 500, height = 300)
-    plot(stats)
-    dev.off()
-    
+
     #non_dom population and fitness
     
     nondomPOP<-getIndividuals(arch)
@@ -225,35 +235,133 @@ for(a in 1:nrow(scen_names)){
     nondom_fit_last<-which(dominated(fitness)==F)
     nondom_fit_last<-t(fitness[1:3, nondom_fit_last])
     colnames(nondom_fit_last)<-c("mean_MWH/yHA","number_WT","CE_index")
-   
+    
+    write.csv(fitn_arch,paste(path_arch,paste(scen_names[a,], paste (paste(p.recomb[n],p.mut[n],sep="_"),"csv",sep="."),sep="_"), sep = "/"))
+    write.csv(nondom_fit_last,paste(path_last,paste(scen_names[a,], paste (paste(p.recomb[n],p.mut[n],sep="_"),"csv",sep="."),sep="_"), sep = "/"))
 
     #calculate how often each site is in the pareto optimal in order to get a feeling about the confidence of the optimal sites
+    
     b<-Reduce(`+`, nondomPOP)/length(nondomPOP)
-    c<-Reduce(`+`, population)/length(population)
-    #attach to cen
-    cen$rel_arch_nonDOM<-b
-    cen$rel_last_nonDOM<-c
+
+
+    
+    cen$tmp<-b
+    names(cen)[names(cen) == "tmp"]<-as.character(paste("rel_arch_nonDOM",paste (p.recomb[n],p.mut[n],sep="_"),sep="_"))
+    
+    print ("next parameter setting")
+    rm(fitn_arch, logger, arch)
+    }
+    cen$delta<-unlist(cen@data[42]-cen@data[43])
+    n_sec<-nrow(subset(cen,cen$delta<0.1&cen$delta>0.1*-1))/nrow(cen)*100
+    
+    cen<-st_as_sf(cen)
+    ## map the uncertainties and save it!
+ map_tmp<-ggplot(cen) +
+    geom_sf(data = bound, fill = NA, color = "gray", size=.6)+
+    geom_sf(data = cen, aes(color= delta), show.legend = "point", size=1)+
+   scale_color_viridis_c()+
+    ggtitle(paste(scen_names[a,], paste (p.recomb[n],p.mut[n],sep="_"),"_securityMAP",sep=""), subtitle = paste(n_sec,"% of all WT's are very similar (+-10%) to both parameter settings",sep=""))+
+    theme_light()+
+   theme(axis.text=element_text(size=10))
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/sec_maps/",paste(scen_names[a,], paste (p.recomb[n],p.mut[n],sep="_"),"_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
+plot(map_tmp)
+dev.off()
   
     #store cen in the DB with the scenario NAME
-    cen<-st_as_sf(cen)
-    st_write(obj = cen, dsn = con, Id(schema="optim_res_201022", table = as.character(paste(scen_names[a,],"_60k_1027",sep=""))))
+    
+    st_write(obj = cen, dsn = con, Id(schema="optim_res_201022", table = as.character(paste(scen_names[a,],"_sens_res",sep=""))))
  
-    #and write the population and fitness into csv
-    
-    
-    write.csv(fitn_arch,paste(path_arch,paste(scen_names[a,],"csv",sep="."), sep = "/"))
-    write.csv(nondom_fit_last,paste(path_last,paste(scen_names[a,],"csv",sep="."), sep = "/"))
-    
-    #store the last fitness values of each scenario in the fitness list
-    fitness_list[[paste0(scen_names[a,], a)]]<-nondom_fit_last
-    #and 
-    scen_vec[a]<-scen_names[a,]  
-  
+
     print(paste(paste(paste(a, " of total ",sep = ""), nrow(scen_names), sep=""), " scenarios are computed", sep = ""))
     #clean this for the next run
-    rm(fitn_arch, logger, arch)
   } 
 }
 
 ```
+##ecr wrapper
+
+
+
+##NSGA-3
+In python with deap
+
+```{r}
+#for the arcgis approach
+library(reticulate)
+Sys.setenv(RETICULATE_PYTHON = "C:/Python27/ArcGISx6410.7/python.exe")
+use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
+
+arcpy<-import("arcpy")
+##parameters
+MU = 80; LAMBDA = MU-40;  MAX.ITER =400
+ p.recomb =0.7
+ p.mut =0.4
+
+#ini_pop generation
+cen<-cen[c(1:300),]
+low_targ<-1299000
+up_targ<-1400000
+
+ bound_up<-up_targ/sum(cen$prod_MW)+0.1*up_targ/sum(cen$prod_MW)
+  bound_low<-low_targ/sum(cen$prod_MW)-0.1*low_targ/sum(cen$prod_MW)
+
+  ini_pop<-list()
+    for(i in 1:MU){
+      x3 <- sample(round(100*bound_low):round(100*bound_up), 1)
+      pop_vec<-(sample(1:0, size=nrow(cen), prob=c(x3,100-x3), replace=TRUE))
+     ini_pop[[i]]<-pop_vec
+    }
+  
+#test_df
+cen_df<-st_drop_geometry(cen)
+  
+```
+
+
+```{python pyNSGA3, echo=TRUE, engine.path="C:/Python27/ArcGISx6410.7/python.exe"}
+
+import arcpy
+import os
+import numpy
+
+import deap 
+from deap import base
+from deap import creator
+from deap import tools
+
+from arcpy import env
+from arcpy import da
+from arcpy.sa import IsNull
+
+
+all_pts = "D:/04_PROJECTS/2001_WIND_OPTIM/B1_tmp.shp"
+#sel=[15,20,24]
+sel = [1,0,1]
+#sel=15
+upperBound = 42000
+lowerBound = 1000
+
+def fitness(sel):
+qry = '"WT_ID" IN ' + str(tuple(sel))
+subset = arcpy.MakeFeatureLayer_management(all_pts, "WT_ID", qry)
+na = arcpy.da.TableToNumPyArray(subset, ['ENER_DENS','prod_MW'])
+sum_MW = numpy.sum(na['prod_MW'])
+mean_ener = numpy.mean(na['ENER_DENS'])
+count_WT = int(arcpy.GetCount_management(subset).getOutput(0))
+
+if (sum_MW<=upperBound and sum_MW>=lowerBound):
+
+  nn_output = arcpy.AverageNearestNeighbor_stats(subset, "EUCLIDEAN_DISTANCE", "NO_REPORT", "100000000")
+  clus = float(nn_output[0])
+  res = (float(clus),count_WT,mean_ener)
+else :
+  res = (10e20,10e20,-10e20)
+return(res)
+
+fitness(sel)
+
+
+```
+
 
