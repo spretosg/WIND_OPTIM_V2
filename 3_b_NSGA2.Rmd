@@ -28,13 +28,14 @@ require(maptools)
 require(reticulate)
 require(spatstat)
 require(RPostgreSQL)
+require(ggpubr)
 
 
 con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
                         = "reto89LLSIMI")
 
 
-#st_write(tmp,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
+◘#st_write(tmp,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
 
 
 ```
@@ -296,11 +297,14 @@ out_path<-paste(main_path,"out",sep="/")
 
 Sys.setenv(RETICULATE_PYTHON = "C:/Python27/ArcGISx6410.7/python.exe")
 use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
-source_python("D:/04_PROJECTS/2001_WIND_OPTIM/NSGA3/NSGA3_fin.py")
+source_python("D:/04_PROJECTS/2001_WIND_OPTIM/NSGA3/NSGA_3_new.py")
 cur_dat<-Sys.Date()
   
 #check the files in the input directory
 file.names <- dir(in_path, pattern =".shp")
+## how many iterations (generations) and how big is the population?
+NGEN = 3
+MU = 80
 
 for(n in 1:length(file.names)){
   tmp_name<-as.character(file.names[n])
@@ -308,40 +312,57 @@ for(n in 1:length(file.names)){
   tmp_name<-substr(tmp_name,1,nchar(tmp_name)-4)
   tmp_pts = st_read(tmp_path)
   tmp_pts<-as_Spatial(tmp_pts)
-  
+  ####### THE python optimization
  
-  a<-optim(as.integer(20),as.integer(100), as.character(tmp_path))
-  par_rob<-as.data.frame(a[1])
-  last_rob<-as.data.frame(a[2])
+  a<-optim(as.integer(MU),as.integer(NGEN), as.character(tmp_path))
+  
+  ### Extract the HV values for each generation
+  hv<-as.data.frame(unlist(a[1]))
+  hv$GENERATION<-c(1:NGEN)
+  colnames(hv) <- c("HV","GENERATION")
+  ## draw a graph
+  HV<-ggplot(data=hv, aes(x=GENERATION, y=HV, group=1)) +
+  geom_line()+
+  ggtitle(paste(tmp_name, paste ("_HV",cur_dat,sep="_")))
+  graph_path<-paste(out_path,"HV_graphs",sep="/")
+  jpeg(file=paste(graph_path,paste(tmp_name, ".jpg",sep=""),sep="/"))
+  plot(HV)
+  dev.off()
+  
+  
+  ### extract the pareto robustness
+  par_rob<-as.data.frame(a[2])
+  #join it to the spatial pts
+  df<-left_join(tmp_pts@data, par_rob, by=c('WT_ID'='WT_ID2'))
+  tmp_pts@data<-df
+  tmp_pts<-st_as_sf(tmp_pts)
+  #write the pts into the postgre sql db
+  st_write(obj = tmp_pts, dsn = con, Id(schema="NSGA3_out", table = as.character(paste(tmp_name,cur_dat,sep="_"))))
+  
+  ### extract the pareto fitness
   par_fit<-as.data.frame(a[3])
+  #and save it
   write.csv(par_fit,paste(out_path,paste("par_fitness",paste(tmp_name,"csv",sep="."),sep="/"),sep="/"))
   
-  track<-as.data.frame(a[4])
-  write.csv(par_fit,paste(out_path,paste("logbook",paste(tmp_name,"csv",sep="."),sep="/"),sep="/"))
+  log<-as.data.frame(a[4])
+  ###extract the logbook
+  write.csv(log,paste(out_path,paste("logbook",paste(tmp_name,"csv",sep="."),sep="/"),sep="/"))
   
   #graph of the three goals from the data logger
-  WT<-ggplot(data=track, aes(x=GENERATION, y=N_WT, group=1)) +
+  WT<-ggplot(data=log, aes(x=GENERATION, y=N_WT, group=1)) +
   geom_line()
   
-  CLUS<-ggplot(data=track, aes(x=GENERATION, y=CLUS, group=1)) +
+  CLUS<-ggplot(data=log, aes(x=GENERATION, y=CLUS, group=1)) +
   geom_line()
    
-  ENER<-ggplot(data=track, aes(x=GENERATION, y=ENERDENS, group=1)) +
+  ENER<-ggplot(data=log, aes(x=GENERATION, y=ENERDENS, group=1)) +
   geom_line()
   
   graph_path<-paste(out_path,"log_graphs",sep="/")
   tmp_plt<-ggarrange(WT,CLUS,ENER,3,1,c("min_NWT","max_clus","max_enerdens"))
   jpeg(file=paste(graph_path,paste(tmp_name, ".jpg",sep=""),sep="/"))
-plot(tmp_plt)
-dev.off()
-  
-  
-  #join the data to the spatial pts
-  df<-left_join(tmp_pts@data, par_rob, by=c('WT_ID'='WT_ID2'))
-  df<-left_join(df, last_rob, by=c('WT_ID'='WT_ID2'))
-  tmp_pts@data<-df
-  tmp_pts<-st_as_sf(tmp_pts)
-  st_write(obj = tmp_pts, dsn = con, Id(schema="NSGA3_out", table = as.character(paste(tmp_name,cur_dat,sep="_"))))
+  plot(tmp_plt)
+  dev.off()
   
 }
 
