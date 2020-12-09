@@ -42,11 +42,17 @@ When you click the **Knit** button a document will be generated that includes bo
 #Load data
 
 ```{r}
-pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=";")
-```
+cur_dat<-Sys.Date()
+pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
+#pareto<-subset(pareto,pareto$MODEL_RUN==201201)
+# restrictive scen
+tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
 
+#relaxing scen
+tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
 
-```{r descriptives}
+tmp_dat$SCENARIO<-as.factor(tmp_dat$SCENARIO)
+
 #make the SCENARIOS as factors
 pareto$SCENARIO<-as.factor(pareto$SCENARIO)
 pareto$SCENARIO<-factor(pareto$SCENARIO, levels=c("B3","B3_FOR+","B3_CRF+","B3_ISOS+","B4_FOR-","B4_CRF-","B4_ISOS-","B4"))
@@ -60,90 +66,145 @@ pareto$POLICY<-as.factor(pareto$POLICY)
 pareto$POLICY<-factor(pareto$POLICY, levels=c("base","FOR","CRF","ISOS"))
 pol_names<-levels(pareto$POLICY)
 
+pareto$MODEL_RUN<-as.factor(pareto$MODEL_RUN)
 
-#######Box plots to explore the data of the three goals for each scenario
-clus<-ggplot(pareto, aes(x=as.factor(POLICY), y=CLUS)) +   
-    geom_boxplot()+
-    facet_wrap(~RESTRICTION)+
-    theme_light()+
-    theme(legend.position = "none")+
-    labs(x ="POLICIES", y = "Clark-Evans ind. <--min")
+```
 
-n_WT<-ggplot(pareto, aes(x=as.factor(POLICY), y=N_WT)) +   
-    geom_boxplot()+
-    facet_wrap(~RESTRICTION)+
-    theme_light()+
-    theme(legend.position = "none")+
-    labs(x ="POLICIES", y = "number of WT. <--min")+
-    theme(axis.title.x = element_blank()) 
-    
-ener<-ggplot(pareto, aes(x=as.factor(POLICY), y=ENERDENS)) +   
-    geom_boxplot()+
-    facet_wrap(~RESTRICTION)+
-    theme_light()+
-    theme(legend.position = "none")+
-    labs(x ="POLICIES", y = "Energy density [MWh/yha]. --> max")+
-    theme(axis.title.x = element_blank())
+# An overall statistical test to check the main tendencies of the differen runs
+```{r}
 
-plot_tmp<-ggarrange(ener, n_WT, clus,  ncol = 1,nrow = 3, common.legend = T,labels = "auto")    
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/descriptives/",paste(name,"_fitness_box.jpg",sep=""),sep=""),width = 1500, height = 1000)
-plot(plot_tmp)
-dev.off()
+summary(aov(N_WT~SCENARIO+MODEL_RUN,pareto))
+
+tmp<-subset(pareto,pareto$SCENARIO=="B4")
+summary(aov(CLUS~MODEL_RUN,tmp))
+wilcox.test(tmp$CLUS ~ tmp$MODEL_RUN)
+#graphical check
+ggplot(tmp, aes(x=as.factor(MODEL_RUN), y=CLUS)) +   
+    geom_boxplot()
+
+```
+
+
+
+```{r descriptives}
 
 #descriptive table for appendix
 desc<-as.data.frame(describeBy(pareto[,1:3],pareto$SCENARIO))
 
 #Tabular form
-desc_mw<-describeBy(x=in_dat[1],group=in_dat$SCENARIO, mat = T)
-desc_WT<-describeBy(x=in_dat[2],group=in_dat$SCENARIO, mat = T)
-desc_clus<-describeBy(x=in_dat[3],group=in_dat$SCENARIO, mat = T)
-write.csv(desc_mw, paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/desc_stat/",paste(cur_dat,"mw_desc.csv",sep="_"),sep=""))
-write.csv(desc_WT, paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/desc_stat/",paste(cur_dat,"WT_desc.csv",sep="_"),sep=""))
-write.csv(desc_clus, paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/desc_stat/",paste(cur_dat,"clus_desc.csv",sep="_"),sep=""))
+desc_mw<-describeBy(x=pareto[3],group=pareto$SCENARIO, mat = T)
+desc_WT<-describeBy(x=pareto[1],group=pareto$SCENARIO, mat = T)
+desc_clus<-describeBy(x=pareto[2],group=pareto$SCENARIO, mat = T)
+write.csv(desc_mw, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"mw_desc.csv",sep="_"),sep=""))
+write.csv(desc_WT, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"WT_desc.csv",sep="_"),sep=""))
+write.csv(desc_clus, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"clus_desc.csv",sep="_"),sep=""))
+
+#######Box plots to explore the data of the three goals for each scenario
+clus<-ggplot(pareto, aes(x=as.factor(POLICY), y=CLUS, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+    labs(x ="POLICIES", y = "Clark-Evans ind. <--min")
+
+n_WT<-ggplot(pareto, aes(x=as.factor(POLICY), y=N_WT, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+    labs(x ="POLICIES", y = "number of WT. <--min")+
+    theme(axis.title.x = element_blank()) 
+    
+ener<-ggplot(pareto, aes(x=as.factor(POLICY), y=ENERDENS, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+    labs(x ="POLICIES", y = "Energy density [MWh/yha]. --> max")+
+    theme(axis.title.x = element_blank())
+
+plot_tmp<-ggarrange(ener, n_WT, clus,  ncol = 1,nrow = 3, common.legend = T,labels = "auto")    
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/descriptives/",paste(name,"_fitness_box.jpg",sep=""),sep=""),width = 1500, height = 2000)
+plot(plot_tmp)
+dev.off()
+
 
 ```
 
+
+
+##statistics
+```{r}
+## 
+my_comparisons <- list( c("B3", "B3_FOR+"),c("B3","B3_ISOS+"),c("B3","B3_CRF+"))
+my_comparisons <- list( c("B4", "B4_FOR-"),c("B4","B4_ISOS-"),c("B4","B4_CRF-"))
+
+#1. CHECK FOR NORMAL DISTR
+tmp_dat %>%
+  group_by(SCENARIO) %>%
+  shapiro_test(N_WT)
+#density plots per scen
+ggplot(data=pareto, aes(x=ENERDENS, group=SCENARIO, fill=SCENARIO)) +
+    geom_density(adjust=1.5)+ 
+    facet_wrap(~SCENARIO) 
+#homogeneity of variance
+levene_test(tmp_dat,N_WT~SCENARIO,center = mean)
+
+# if both not normal and inhomogeneity of variances == man whitney u test
+#make comparison group manual
+tmp_dat2<-subset(tmp_dat, tmp_dat$SCENARIO=="B3"|tmp_dat$SCENARIO=="B3_FOR+")
+
+wilcox.test(tmp_dat2$N_WT ~ tmp_dat2$SCENARIO)
+
+#if normal distributed but homogen variances == welch t.test
+w<-welch.test(N_WT~SCENARIO,pareto)
+paircomp(w)
+#if both given == t.test
+t.test(a$number_WT,b$number_WT,alternative = "two.sided", var.equal = FALSE)
+
+```
+
+
 ## 2D scatter plot
 ```{r}
-### restriction
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
-tmp_dat$SCENARIO<-as.factor(tmp_dat$SCENARIO)
+
 num<-c(1,2,3,4)
 tmp_dat$num<-num[as.factor(tmp_dat$SCENARIO)]
 
 A<-scatter2D(tmp_dat$N_WT, tmp_dat$CLUS,
           colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#00994D", "#ff33ff","#0080ff"),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
           xlab = "min<--N_WT",
           ylab ="min<--CLUSTER",
           cex=0.5, bty = "b2",
           colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "FOR-","ISOS-", "CRF-"))
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
           )
 B<-scatter2D(tmp_dat$N_WT, tmp_dat$ENERDENS,
           colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#00994D", "#ff33ff","#0080ff"),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
           xlab = "min<--N_WT",
           ylab ="enerdens-->max",
           cex=0.5, bty = "b2",
           colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "FOR-","ISOS-", "CRF-"))
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
           )
 C<-scatter2D(tmp_dat$CLUS, tmp_dat$ENERDENS,
           colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#00994D", "#ff33ff","#0080ff"),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
           xlab = "min<--CLUSTER",
           ylab ="enerdens-->max",
           cex=0.5, bty = "b2",
           colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "FOR-","ISOS-", "CRF-"))
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
           )
 ### relaxation
-
 
 ```
 
@@ -179,93 +240,14 @@ scatter3D_fancy <- function(x, y, z,..., colvar = colvar)
 
 scatter3D_fancy(tmp_dat$N_WT, tmp_dat$CLUS, tmp_dat$ENERDENS,
           colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#00994D", "#ff33ff","#0080ff"),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
           xlab = "min<--N_WT",
           ylab ="min<--CLUSTER", 
           zlab = "max<--ENERDENS",
           theta = 25,d = 1, phi = 0, cex=0.3, bty = "b2",ticktype = "detailed",colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "FOR-","ISOS-", "CRF-")))
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-")))
               
-```
-
-
-##statistics
-```{r}
-## still use the tmp_dat
-my_comparisons <- list( c("B3", "B3_FOR+"),c("B3","B3_ISOS+"),c("B3","B3_CRF+"))
-my_comparisons <- list( c("B4", "B4_FOR-"),c("B4","B4_ISOS-"),c("B4","B4_CRF-"))
-## Number of WT
-#1. CHECK FOR NORMAL DISTR
-n_wtSHAP<-tapply(tmp_dat$N_WT, tmp_dat$SCENARIO, shapiro.test)
-#2. homogeneity of variance
-n_WTLEVE<-leveneTest(tmp_dat$N_WT,tmp_dat$SCENARIO)
-
-#if levene p>.05 t test
-t.test(a$number_WT,b$number_WT,alternative = "two.sided", var.equal = FALSE)
-
-#if levene p<.05 thus a welch test should be performed, since variances are not homogen
-w<-welch.test(N_WT~SCENARIO,tmp_dat)
-paircomp(w)
-
-
-### Number of WT
-#1. CHECK FOR NORMAL distribution
-
-tmp_dat %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(N_WT)
-
- #homogeneity of variance
-levene_test(tmp_dat,N_WT~SCENARIO,center = mean)
-
-#since the normality is not strongly violated, we have a large N per group records per group and variance homogeneity, we assume ANOVA preconditions as given:
-
-anov<-aov(N_WT~SCENARIO,data=tmp_dat)
-
-
-
-#graphical check ##relaxing
-num_WT<-ggboxplot(tmp_dat, x = "SCENARIO", y = "N_WT", 
-        ylab = "N_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B4", 
-                     method = "t.test" )+
-  stat_compare_means(label.y = 1200,method="anova") #the global
-
-clus<-ggboxplot(tmp_dat, x = "SCENARIO", y = "CLUS", 
-        ylab = "CLUS", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B4", 
-                     method = "t.test" )+
-  stat_compare_means(label.y = .8,method="anova") #the global
-
-enerd<-ggboxplot(tmp_dat, x = "SCENARIO", y = "ENERDENS", 
-        ylab = "ENERDENS", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B4", 
-                     method = "t.test" )+
-  stat_compare_means(label.y = .8,method="t.test") #the global
-
-#restricting
-num_WT<-ggboxplot(tmp_dat, x = "SCENARIO", y = "N_WT", fill = "SCENARIO",
-        ylab = "N_WT", xlab = "SCENARIO")+
-  scale_fill_manual(values=c("#FF8000", "#00994D", "#FF33FF","#0080FF"))+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B3", 
-                     method = "t.test" )+
-  stat_compare_means(label.y = 1200,method="anova") #the global
-
-clus<-ggboxplot(tmp_dat, x = "SCENARIO", y = "CLUS", 
-        ylab = "CLUS", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B3", 
-                     method = "t.test" )+
-  stat_compare_means(label.y = .8,method="anova") #the global
-
-enerd<-ggboxplot(tmp_dat, x = "SCENARIO", y = "ENERDENS", 
-        ylab = "ENERDENS", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", ref.group = "B3", 
-                     method = "t.test" )+
-  stat_compare_means(label.y = .8,method="t.test") #the global
-
-
-
 ```
 
 
@@ -284,7 +266,10 @@ bound<-st_transform(bound,crs = "+init=epsg:21781")
 ###localhost
 B3<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_A.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
+LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
+
+
 ## important robust B3
 B3<-B3[order(-B3$par_rob),]
 sum_prod = 0
@@ -300,6 +285,51 @@ for(i in 1:nrow(B3)){
 }
 #create a subset to map  
 rob_B3<-B3[1:i,]
+ppptmp<-as.ppp(rob_B3)
+
+mean(nndist(ppptmp))
+
+#compute the spatial distribution of robust solution with CE index
+#convert the pts in ppp and the polygon into owin in order to compute clark evans
+
+b<-as(st_zm(bound), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+clarkevans(ppptmp, clipregion =  p)
+
+mean(rob_B3$ALTI)
+mean(rob_B3$DIST_HZ)
+mean(rob_B3$weigh_stre)
+
+
+###Alps
+b<-as(st_zm(LT[2]), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+#subset pts
+alpB3<-subset(rob_B3,rob_B3$LT==2)
+ppptmp<-as.ppp(alpB3)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
+
+#PRELAPS JURA
+b<-as(st_zm(LT[3]), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+#subset pts
+alpB3<-subset(rob_B3,rob_B3$LT==3)
+ppptmp<-as.ppp(alpB3)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
+### PLATEAU
+b<-as(st_zm(LT[1]), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+#subset pts
+alpB3<-subset(rob_B3,rob_B3$LT==1)
+ppptmp<-as.ppp(alpB3)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
 
 ### plot theses imp Baseline pts
 map_tmp<-ggplot(data = bound) +
@@ -309,31 +339,86 @@ map_tmp<-ggplot(data = bound) +
     geom_sf(data = bound, fill = NA, color = "gray")+
     geom_sf(data = rob_B3, color= "black", size=0.8)
 
-
-B3CRF<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_FFF+.shp")
+### and here the same for the others (adjust accordingly)
+tmp<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_ISOS+.shp")
 ## important robust B3
-B3CRF<-B3CRF[order(-B3CRF$par_rob),]
+tmp<-tmp[order(-tmp$par_rob),]
 sum_prod = 0
 ind=0
 
-for(i in 1:nrow(B3CRF)){
+for(i in 1:nrow(tmp)){
  if(sum_prod>4300000){
    break
    print(i)
   }
-  tmp_prod<-B3CRF$prod_MW[i]
+  tmp_prod<-tmp$prod_MW[i]
   sum_prod<-sum_prod+tmp_prod
 }
 #create a subset to map  
-rob_B3CRF<-B3CRF[1:i,]
+rob_tmp<-tmp[1:i,]
+
+
+#compute the spatial distribution of robust solution with CE index
+#convert the pts in ppp and the polygon into owin in order to compute clark evans
+ppptmp<-as.ppp(rob_tmp)
+mean(nndist(ppptmp))
+mean(rob_tmp$DIST_HZ)
+mean(rob_tmp$ALTI)
+mean(rob_tmp$weigh_stre)
+
+clarkevans(ppptmp, clipregion =  p)
+
+#here we can plot the 30 nearest neighbors and their average distances
+ANN <- apply(nndist(ppptmp, k=1:30),2,FUN=mean)
+plot(ANN ~ eval(1:30), type="b", main=NULL, las=1)
+
+
+###Alps
+b<-as(st_zm(LT[2]), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+#subset pts
+alpB3<-subset(rob_tmp,rob_tmp$LT==2)
+ppptmp<-as.ppp(alpB3)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
+
+#PRELAPS JURA
+b<-as(st_zm(LT[3]), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+#subset pts
+alpB3<-subset(rob_tmp,rob_tmp$LT==3)
+ppptmp<-as.ppp(alpB3)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
+### PLATEAU
+b<-as(st_zm(LT[1]), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+#subset pts
+alpB3<-subset(rob_tmp,rob_tmp$LT==1)
+ppptmp<-as.ppp(alpB3)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
+
+#BARPLOT for LT distribution from csv
+LT_WT<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/LT_WT_201207.csv", sep=";")
+ggbarplot(LT_WT, x= "POLICY", y= "N_WT", color = "LANDSCAPE_TYPE",
+  fill = "LANDSCAPE_TYPE", palette = c( "#808000","#808080", "#008080"))+
+    facet_wrap(~RESTRICTION)+
+  theme_gray()
 
 ### plot theses imp Baseline pts
 map_tmp<-ggplot(data = bound) +
     geom_sf() +
-    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_B3CRF)[,1] ,y=st_coordinates(rob_B3CRF)[,2]), data=rob_B3CRF,
+    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_tmp)[,1] ,y=st_coordinates(rob_tmp)[,2]), data=rob_tmp,
                      alpha=0.5,contour_var = "ndensity",colour=F)+
     geom_sf(data = bound, fill = NA, color = "gray")+
-    geom_sf(data = rob_B3CRF, color= "black", size=0.8)
+    geom_sf(data = rob_tmp, color= "black", size=0.8)
+
+#distribution in LT's
+hist(rob_tmp$LT)
 
 #merge the two pts to compare
 joined<-st_join(B3, B3CRF)
@@ -374,32 +459,6 @@ mapview::mapview(tmpA,zcol="delta_rob")
 
 
 ```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-```{r}
-in_dat %>%
-  group_by(SCENARIO) %>%
-  summarise_at(vars(number_WT,CE_index,mean_MWH.yHA), funs(mean(., na.rm=TRUE)))
-
-#read the last calc
-cen<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[4,])))
-
-
-tmp<-subset(cen,cen$FFF==1&cen$clus_max==1)
-
-B3_opt<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/B3_201008.shp")
-B3_opt<-st_drop_geometry(B3_opt)
-B3_opt_WT <- subset(B3_opt,B3_opt$amount_min==1)
-res3<-B3_opt_WT%>%group_by(CANT_name)%>%summarise_at(vars(prod_MW_ne),funs(sum(.,na.rm = F)/1000))
-
-write.csv(res3,"D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/B3_nWT.csv")
-
-```
-
-
-
-
 
 ## Wind CH optimization first draft results
 In order to discuss the content of the paper I show the first insights in the optimization analysis. Before I do this, here are a few points to consider / to konw in order to interpret the data
@@ -524,679 +583,108 @@ mapview::mapview(subset(in_restr,in_restr$delt_B3_B4>1),zcol="delt_B3_B4")
 
 ```
 
-## RF in order to detect important variables which defines the security
-In the next step we try to analyse which further variables could be related to the security delta between B3 and b4
-```{r}
-nonSp<-st_drop_geometry(B_join)
-preProcess_range_model <- preProcess(nonSp[,c(4:15,17:24,26:30,32,34,35,44)], 
-                        method = c("center", "scale", "nzv"))
-preProcess_range_model$method
-
-PRED <- predict(preProcess_range_model, newdata = nonSp[,c(4:15,17:24,26:30,32,34,35,44)])
-
-
-# Step 1: Get row numbers for the training data
-trainRowNumbers <- createDataPartition(PRED$delt_B3_B4, p=0.7, list=FALSE)
-# Step 2: Create the training  dataset
-trainset <- PRED[trainRowNumbers,]
-# Step 3: Create the test dataset
-testset <- PRED[-trainRowNumbers,]
-
-outcomeName <- variable.names(PRED[29])
-pred_names<-variable.names(PRED[,c(1:28)])
-# Define the train control
-fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, savePredictions = T,   verboseIter = FALSE)
-
-##----------RF tune
-mtry <- sqrt(ncol(trainset[,pred_names]))
-RFtune <- expand.grid(mtry=mtry)
-#simple
-start<-Sys.time()
-#rf_mod<-train(trainset[,pred_names],  as.factor(trainset[,outcomeName]), method = "rf")
-rf_B3<-train(trainset[,pred_names],  trainset[,outcomeName], method = "rf",trControl = fitControl,tunegrid=RFtune)
-end<-Sys.time()
-end-start
-
-varimp_B3 <- varImp(rf_B3)
-VARIMP_B3<-varimp_B3$importance
-write.csv(VARIMP_B3,"C:/Users/spreto/Desktop/B3.csv")
-
-
-```
-
-##some statistics between the security groups
-```{r}
-B_join$sec_catB3[B_join$sum_pop_pareto.x< 75] <- "low"
-B_join$sec_catB3[B_join$sum_pop_pareto.x>= 75] <- "high"
-
-# Convert the column to a factor
-B_join$sec_catB3 <- factor(B_join$sec_catB3)
-B_join<-st_drop_geometry(B_join)
-
-B_join<-B_join[,c(4:15,17:24,26:30,32,34,35,45)]
-
-mod<-list()
-for(i in 1:28){
-    fmla <- formula(paste(names(B_join)[i], " ~ sec_catB3"))
-    mod[[i]]<-wilcox.test(fmla, data = B_join, paired = FALSE)
-}
-
-tapply(B3_noBI$DIST_BUILD,B3_noBI$sec_cat,mean)
-```
-
-
-
-## Second question (s)
-2.1 What is the effect on (n_WT, clustering, energy density) when protecting or allowing the FOREST from WT?
-
-```{r}
-#
-#subsetting FOREST
-
-all<-subset(in_dat,in_dat$group=="FOR" | in_dat$group=="all")
-my_comparisons <- list( c("B1", "B1_FOR+"), c("B2", "B2_FOR+"), c("B3", "B3_FOR+"), c("B4", "B4_FOR-"),c("B2_FOR+", "B1_FOR+"),c("B2_FOR+", "B3_FOR+"))
-
-### Number of WT
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(number_WT) #not normally distributed
-# homogeneity of var
-levene_test(all,number_WT~SCENARIO,center = mean) #seems to have +- equal variances between scen
-
-#graphical check
-nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "n_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif",
-                      method="t.test" )+
-  stat_compare_means(label.y = 1200, method = "anova")
-
-############################ CE
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(CE_index)
-
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
-
-#graphical check
-CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "CE_ind", xlab = "SCENARIO")+
-        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
-        stat_compare_means(label.y = .5)
-
-################# enerdens
-#1. CHECK FOR NORMAL DISTR
-
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(mean_MWH.yHA)
-
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
-
-#graphical check
-enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
-        stat_compare_means(label.y = 1.1)
-
-plot_tmp<-ggarrange(nWT, CE, enerdens,  ncol = 1,nrow = 3, labels = "auto")
-
-
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"FOR.jpg",sep="_"),sep=""),width = 1500, height = 1000)
-plot(plot_tmp)
-dev.off()
-
-
-#subsetting FFF
-
-all<-subset(in_dat,in_dat$group=="FFF" | in_dat$group=="all")
-my_comparisons <- list( c("B1", "B1_FFF+"), c("B2", "B2_FFF+"), c("B3", "B3_FFF+"), c("B4", "B4_FFF-"),c("B2_FFF+", "B1_FFF+"),c("B2_FFF+", "B3_FFF+"))
-
-### Number of WT
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(number_WT) #close to normally distributed
-# homogeneity of var
-levene_test(all,number_WT~SCENARIO,center = mean) #seems to not have  equal variances between scen
-
-#graphical check
-nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "n_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
-        stat_compare_means(label.y = 1200)
-
-############################ CE
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(CE_index) #not normally dist
-
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
-
-#graphical check
-CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "CE_ind", xlab = "SCENARIO")+
-        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
-        stat_compare_means(label.y = .5)
-
-################# enerdens
-#1. CHECK FOR NORMAL DISTR
-
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(mean_MWH.yHA)
-
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
-
-#graphical check
-enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
-        stat_compare_means(label.y = 1.1)
-
-plot_tmp<-ggarrange(nWT, CE, enerdens,  ncol = 1,nrow = 3, labels = "auto")
-
-
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"FFF.jpg",sep="_"),sep=""),width = 1500, height = 1000)
-plot(plot_tmp)
-dev.off()
-
-#subsetting BLN
-
-all<-subset(in_dat,in_dat$group=="BLN" | in_dat$group=="all")
-my_comparisons <- list( c("B1", "B1_BLN+"), c("B2", "B2_BLN-"), c("B3", "B3_BLN-"), c("B4", "B4_BLN-"),c("B2_BLN-", "B1_BLN+"),c("B2_BLN-", "B3_BLN-"))
-
-### Number of WT
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(number_WT) #close to normally distributed
-# homogeneity of var
-levene_test(all,number_WT~SCENARIO,center = mean) #seems to have equal variances between scen
-
-#graphical check
-nWT<-ggboxplot(all, x = "SCENARIO", y = "number_WT", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "n_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", method="t.test" )+
-  stat_compare_means(label.y = 1200, method = "anova")
-
-############################ CE
-#1. CHECK FOR NORMAL DISTR
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(CE_index) #not normally dist
-
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
-
-#graphical check
-CE<-ggboxplot(all, x = "SCENARIO", y = "CE_index", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "CE_ind", xlab = "SCENARIO")+
-        stat_compare_means(comparisons = my_comparisons, label = "p.signif")+
-        stat_compare_means(label.y = .5)
-
-################# enerdens
-#1. CHECK FOR NORMAL DISTR
-
-all %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(mean_MWH.yHA)
-
-# homogeneity of var
-levene_test(all,CE_index~SCENARIO,center = mean) #seems non equal variances between scenarios --> wilcox and Kruskal wallis
-
-#graphical check
-enerdens<-ggboxplot(all, x = "SCENARIO", y = "mean_MWH.yHA", 
-          color = "group", palette = c("#00AFBB", "#E7B800"),
-        ylab = "mean_MWH.yHA", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )+
-        stat_compare_means(label.y = 1.1)
-
-plot_tmp<-ggarrange(nWT, CE, enerdens,  ncol = 1,nrow = 3, labels = "auto")
-
-
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"BLN.jpg",sep="_"),sep=""),width = 1500, height = 1000)
-plot(plot_tmp)
-dev.off()
-
-```
-
-
-## WITHIN B4 the effect of the three restrictions
-
-
-```{r}
-
-B4<-subset(in_dat,in_dat$frame_policy=="B4")
-B3<-subset(in_dat,in_dat$frame_policy=="B3")
-my_comparisons <- list( c("B3_FOR+", "B3_FFF+"), c("B3_FOR+", "B3_BLN-"), c("B3_FFF+", "B3_BLN-"),c("B3", "B3_FFF+"),c("B3","B3_FOR+"),c("B3","B3_BLN-"))
-
-B4 %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(mean_MWH.yHA) # not normal, but not so bad
-
-# homogeneity of var
-levene_test(B4,mean_MWH.yHA~SCENARIO,center = mean) #seems to have equal variances
-
-#graphical check
-enerdens<-ggboxplot(B4, x = "SCENARIO", y = "mean_MWH.yHA", 
-        ylab = "mean_MWH.yHA-->max", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", method="t.test" )
-
-
-B4 %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(number_WT) # not normal, but not so bad
-
-# homogeneity of var
-levene_test(B4,number_WT~SCENARIO,center = mean) #seems to have equal variances
-
-#graphical check
-nwt<-ggboxplot(B4, x = "SCENARIO", y = "number_WT", 
-        ylab = "min<--num_WT", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif", method="t.test" )
-
-
-
-B4 %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(CE_index) # not normal
-
-# homogeneity of var
-levene_test(B4,CE_index~SCENARIO,center = mean) #seems to have equal variances
-
-#graphical check
-clus<-ggboxplot(B4, x = "SCENARIO", y = "CE_index", 
-        ylab = "min<--clustering", xlab = "SCENARIO")+
-  stat_compare_means(comparisons = my_comparisons, label = "p.signif" )
-
-
-
-plot_tmp<-ggarrange(nwt, clus, enerdens,  ncol = 3,nrow = 1, labels = "auto")
-
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/results_stat/Q2/",paste(cur_dat,"B3.jpg",sep="_"),sep=""),width = 1500, height = 1000)
-plot(plot_tmp)
-dev.off()
-
-```
 
 
 ##costs
 ```{r}
-conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
-                      user = "postgres", password = "reto89LLSIMI")
+###localhost
+B3<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B4_FFF-.shp")
 
-a<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B1_2020-10-09_res"))
-tmpA<-subset(a,a$sum_pop_pareto==80)
-b<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B2_2020-10-08_res"))
-tmpB<-subset(b,b$sum_pop_pareto==80)
-c<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_2020-10-08_res"))
-tmpC<-subset(c,c$sum_pop_pareto==80)
-d<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_FOR+_2020-10-08_res"))
-tmpD<-subset(d,d$sum_pop_pareto==80)
-e<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_FFF+_2020-10-08_res"))
-tmpE<-subset(e,e$sum_pop_pareto==80)
-f<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B3_ISOS+_2020-10-14_res"))
-tmpF<-subset(f,f$sum_pop_pareto==80)
-g<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_FFF-_2020-10-08_res"))
-tmpG<-subset(g,g$sum_pop_pareto==80)
-h<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_FOR-_2020-10-08_res"))
-tmpH<-subset(h,h$sum_pop_pareto==80)
-i<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_ISOS-_2020-10-15_res"))
-tmpI<-subset(i,i$sum_pop_pareto==80)
-j<-st_read(dsn = conn, Id(schema="optim_res_201005", table = "B4_2020-10-10_res"))
-tmpJ<-subset(j,j$sum_pop_pareto==80)
-
-#all together
-all<-rbind(tmpA,tmpB,tmpC,tmpD,tmpE,tmpF,tmpG,
-           tmpH,tmpI,tmpJ)
-
-all_common<-all[duplicated(all$WT_ID), ]
-all_common<-all[!duplicated(all$WT_ID), ]
-
-a<- a[!lengths(st_intersects(a, P1_clus)), ]
-mapview::mapview(a_P1)
-
-
-a$SCEN<-"B3_FFF+"
-
-b$SCEN<-"B4_BLN-"
-
-tmpA<-subset(a,a$sum_pop_pareto==80)
-tmpA<-a[with(a, order(a$sum_pop_pareto,decreasing = T)), ]
-tmpA<-test_common[with(test_common, order(test_common$sum_pop_pareto,decreasing = T)), ]
-
-#while loop to sum prod MW until 4300000 MWh/y is reached
+## important robust
+B3<-B3[order(-B3$par_rob),]
 sum_prod = 0
 ind=0
 
-for(i in 1:nrow(tmpA)){
+for(i in 1:nrow(B3)){
  if(sum_prod>4300000){
    break
    print(i)
   }
-  tmp_prod<-tmpA$prod_MW[i]
+  tmp_prod<-B3$prod_MW[i]
   sum_prod<-sum_prod+tmp_prod
 }
-
 #create a subset to map  
-tmpA<-tmpA[1:i,]
+rob_B3<-B3[1:i,]
 
+rob_tmp<-rob_B3
 
+tmp_sub<-subset(rob_tmp,rob_tmp$FFF==1 & rob_tmp$DIST_FOR>1 & rob_tmp$DIST_ISOS>1000)
+print(nrow(tmp_sub))
 
-##how much of the points are in Exclusion areas?
-tmp_INEXCL<-subset(tmpA,tmpA$DIST_BLN < 1 |tmpA$DIST_HZ<300 | tmpA$DIST_UNE_K < 1|tmpA$DIST_UNE_N<1|tmpA$DIST_MEAD < 1 | tmpA$DIST_FLOOD < 1 |tmpA$DIST_NATPA<2000|tmpA$DIST_VAEW<1|tmpA$DIST_MIL<100|tmpA$DIST_RAD<5000|tmpA$DIST_AIR<1)
-print(nrow(tmp_INEXCL))
+#import the relative deltas 
+rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/delta_rel_201208.csv",sep=";")
 
-##how much of the points are in Exclusion & RESERVE areas?
-tmp_EXCL_RES<-subset(tmpA,tmpA$DIST_BLN < 1 |tmpA$DIST_HZ<300 | tmpA$DIST_UNE_K < 3000|tmpA$DIST_UNE_N<1|tmpA$DIST_MEAD < 1 | tmpA$DIST_FLOOD < 1 |tmpA$DIST_NATPA<2000|tmpA$DIST_VAEW<1|tmpA$DIST_MIL<100|tmpA$DIST_RAD<20000|tmpA$DIST_AIR<1|tmpA$DIST_REG_N<1|tmpA$DIST_BIOS<1|tmpA$DIST_JB<1)
-print(nrow(tmp_EXCL_RES))
-
-##only in reserve
-tmp_RES<-anti_join(tmpA,tmp_INEXCL)
-tmp_RES<-subset(tmp_RES,tmp_RES$DIST_RAD<20000|tmp_RES$DIST_REG_N<1|tmp_RES$DIST_BIOS<1|tmp_RES$DIST_JB<1| tmpA$DIST_UNE_K < 3000)
-print(nrow(tmp_RES))
-
-
-##how much of the points are in Exclusion & RESERVE & other nat interest areas?
-tmp_excl_res_other<-subset(tmpA,tmpA$DIST_BLN < 1 |tmpA$DIST_HZ<300 | tmpA$DIST_UNE_K < 3000|tmpA$DIST_UNE_N<1|tmpA$DIST_MEAD < 1 | tmpA$DIST_FLOOD < 1 |tmpA$DIST_NATPA<2000|tmpA$DIST_VAEW<1|tmpA$DIST_MIL<100|tmpA$DIST_RAD<20000|tmpA$DIST_AIR<1|tmpA$DIST_REG_N<1|tmpA$DIST_BIOS<1|tmpA$DIST_JB<1|tmpA$DIST_FOR<0|tmpA$DIST_ISOS<1000|tmpA$FFF==1)
-print(nrow(tmp_excl_res_other))
-
-
-#other nat interests
-OTH_INT<-anti_join(tmp_excl_res_other,tmp_EXCL_RES)
-print(nrow(OTH_INT))
-
-  ##FFF
-  tmp_FFF<-subset(OTH_INT,OTH_INT$FFF==1)
-  print(nrow(tmp_FFF))
-  
-  ## FF_only
-  tmp_FFF<-subset(OTH_INT,OTH_INT$FFF==1&OTH_INT$DIST_FOR>1&OTH_INT$DIST_ISOS>1000)
-  print(nrow(tmp_FFF))
-
-  ##FOR
-  tmp_FOR<-subset(OTH_INT,OTH_INT$DIST_FOR<1)
-  print(nrow(tmp_FOR))
-  ## FOR_only
-  tmp_FOR<-subset(OTH_INT,OTH_INT$FFF==0&OTH_INT$DIST_FOR<1&OTH_INT$DIST_ISOS>1000)
-  print(nrow(tmp_FOR))
-  
-  ##ISOS
-  tmp_ISOS<-subset(OTH_INT,OTH_INT$DIST_ISOS<1000)
-  print(nrow(tmp_ISOS))
-  ## ISOS_only
-  tmp_ISOS<-subset(OTH_INT,OTH_INT$FFF==0&OTH_INT$DIST_FOR>1&OTH_INT$DIST_ISOS<1000)
-  print(nrow(tmp_ISOS))
-  
-  ##only_ISOS_FOR
-   tmp_ISOS_FOR<-subset(OTH_INT,OTH_INT$FFF==0&OTH_INT$DIST_FOR<1&OTH_INT$DIST_ISOS<1000)
-   print(nrow(tmp_ISOS_FOR))
-   
-     ##only_ISOS_FFF
-   tmp_ISOS_FFF<-subset(OTH_INT,OTH_INT$FFF==1&OTH_INT$DIST_FOR>1&OTH_INT$DIST_ISOS<1000)
-   print(nrow(tmp_ISOS_FFF))
-   
-       ##only_FOR_FFF
-   tmp_FOR_FFF<-subset(OTH_INT,OTH_INT$FFF==1&OTH_INT$DIST_FOR<1&OTH_INT$DIST_ISOS>1000)
-   print(nrow(tmp_FOR_FFF))
-   
-    ## all three
-   tmp_three<-subset(OTH_INT,OTH_INT$FFF==1&OTH_INT$DIST_FOR<1&OTH_INT$DIST_ISOS<1000)
-   print(nrow(tmp_three))
-  
-#no nat constr
-tmp_NOINT <- tmpA[!lengths(st_intersects(tmpA, tmp_excl_res_other)), ]
-print(nrow(tmp_NOINT))
-
-##find the commons in all three scenarios which are NOT in any nat_int_constraint and within 1k to each other
-NOINT_B1<-tmp_NOINT
-NOINT_B2<-tmp_NOINT
-NOINT_B3<-tmp_NOINT
-NOINT_B4<-tmp_NOINT
-
-
-
-## we merge all optimized points which are outside of all national constraints
-test_tmp<-rbind(NOINT_B3,NOINT_B4)
-
-##we remove the duplicates
-test_tmp1<-test_tmp[!duplicated(test_tmp$WT_ID), ]
-#the common points B3_B4
-test_common<-test_tmp[duplicated(test_tmp$WT_ID), ]
-
-
-
-##B4 without the common pts
-B4_noCOMMON <- NOINT_B4[!lengths(st_intersects(NOINT_B4, test_common)), ]
-#B3 secure no common with B4
-B3_noCOMMON <- NOINT_B3[!lengths(st_intersects(NOINT_B3, test_common)), ]
-B3_noCOMMON <- B3_noCOMMON[!lengths(st_intersects(B3_noCOMMON, B4_noCOMMON)), ]
-
-B3_B4_common<-test_common
-
-#B3_FFF+ excluding P1,P2P3
-P4_FFFplus <- tmpA[!lengths(st_intersects(tmpA, B3_B4_common)), ]
-P4_FFFplus <- P4_FFFplus[!lengths(st_intersects(P4_FFFplus, B4_noCOMMON)), ]
-P4_FFFplus <- P4_FFFplus[!lengths(st_intersects(P4_FFFplus, B3_noCOMMON)), ]
-
-
-
-st_write(obj = test_common, dsn = conn, Id(schema="optim_res_201005", table = "comm_B3FOR+_P1"))
-##db scan with m=3000meters and min clust of 3 in qgis
-#import 
-P1<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/pathways/P1_dbscan_B3_B4common_201016.shp")
-P1_clus<-subset(P1,P1$CLUSTER_ID>0)
-P2a<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/pathways/P2a_dbscan_B3FOR+_P1_201016.shp")
-P2a_clus<-subset(P2a,P2a$CLUSTER_ID>0)
-
-bound<-st_read(dsn= conn, Id(schema="GEO_base_data", table = "CH_boundaries"))
-bound<-st_transform(bound,crs = "+init=epsg:21781") 
-
-map_tmp<-ggplot(data = bound) +
-    geom_sf() +
-     geom_sf(data = bound, fill = NA, color = "gray")+
-    geom_sf(data = B3_noCOMMON, color= "black", size=0.8)+
-    theme(axis.text=element_text(size=16)) + 
-  theme(legend.position = "none") +
-  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
-    #theme_minimal()
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/optim_res/pathways/",paste(ScenName,"_n_WT_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
-plot(map_tmp)
-dev.off()
-
-
-mapview::mapview(P1_clus,zcol="prod_MW")
-
-
-#common_pts in 3000m
-common_1k<-st_join(NOINT_B1, NOINT_B2,
-            join = st_is_within_distance, dist = 0)
-common_1k<-subset(common_1k,common_1k$WT_ID.x==common_1k$WT_ID.y)
-
-
- st_write(obj = NOINT_B2, dsn = conn, Id(schema="optim_res_201005", table = "NOINT_B2"))
-
-
-
-
-
-common_1k<-subset(common_1k,common_1k$WT_ID.y>0)
-
-test_1<-st_join(test_tmp, test_tmp,
-            join = st_is_within_distance, dist = 3000)
-test_1<-subset(test_1,(test_1$WT_ID.x-test_1$WT_ID.y)>0)
-
-
-common_1k<-st_join(common_1k, NOINT_B3,
-            semi_join = st_is_within_distance, dist = 0)
-common_1k<-subset(common_1k,common_1k$WT_ID>0)
-
-
-mapview::mapview(common_1k, zcol="prod_MW.x")
-
-
-all<-rbind(NOINT_B1,NOINT_B2)
-
-summary(aov(DIST_HZ~SCEN,all))
-HZ<-ggboxplot(all, x = "SCEN", y = "DIST_HZ")+
-  stat_compare_means(method = "anova")
-
-summary(aov(weigh_stre~SCEN,all))
-weight<-ggboxplot(all, x = "SCEN", y = "weigh_stre")+
-  stat_compare_means(method = "anova")
-
-summary(aov(NOISE~SCEN,all))
-noise<-ggboxplot(all, x = "SCEN", y = "NOISE")+
-  stat_compare_means(method = "anova")
-
-summary(aov(VIS_ARE_ha~SCEN,all))
-ha<-ggboxplot(all, x = "SCEN", y = "VIS_ARE_ha")+
-  stat_compare_means(method = "anova")
-
-summary(aov(VIS_POP~SCEN,all))
-pop<-ggboxplot(all, x = "SCEN", y = "VIS_POP")+
-  stat_compare_means(method = "anova")
-
-summary(aov(COHER_AREA~SCEN,all))
-coher<-ggboxplot(all, x = "SCEN", y = "COHER_AREA")+
-  stat_compare_means(method = "anova")
-
-summary(aov(VIS_INFRA~SCEN,all))
-infr<-ggboxplot(all, x = "SCEN", y = "VIS_INFRA")+
-  stat_compare_means(method = "anova")
-
-summary(aov(VIS_IMPACT~SCEN,all))
-imp<-ggboxplot(all, x = "SCEN", y = "VIS_IMPACT")+
-  stat_compare_means(method = "anova")
-
-summary(aov(DIST_BUILD~SCEN,all))
-build<-ggboxplot(all, x = "SCEN", y = "DIST_BUILD")+
-  stat_compare_means(method = "anova")
-
-
-count<-nrow(subset(tmpA,tmpA$DIST_FOR<1 |tmpA$DIST_ISOS<1000|tmpA$FFF==1))
-
-nrow(subset(tmpA,tmpA$FFF==1))
-
-
-mean(tmpA$weigh_stre) 
-
-mean(tmpA$DIST_HZ)
-mean(tmpA$NOISE)
-mean(tmpA$VIS_ARE_ha)
-mean(tmpA$VIS_POP)
-
-
+#plot pos neg bar
+ggplot(data = rel_delt,
+       aes(x = REL_DIFF, y = WT_in_restr,
+           fill = REL_DIFF > 0))+
+  geom_bar(stat = "identity")+
+  facet_wrap(~SCENARIO)+
+  labs(y="Areas for Allocating WT", x = "Relative change compared to baseline Scenario [%]")+
+  theme(axis.title = element_text(size =16), axis.text = element_text(size=10))+
+  scale_fill_manual(values=c( "#31913e","#eb4034"))+
+  coord_flip()
 
 ```
 
-
-## some maps
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-conn <- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", port = 5432, 
-                      user = "postgres", password = "reto89LLSIMI")
-
-scen_names<-dbGetQuery(conn,"SELECT table_name FROM information_schema.tables WHERE table_schema='optim_res_201005'")
-bound<-st_read(dsn= conn, Id(schema="GEO_base_data", table = "CH_boundaries"))
-bound<-st_transform(bound,crs = "+init=epsg:21781") 
-
-# Here we loop through all scen files from the DB and calculate the optimization
-for(a in 1:nrow(scen_names)){
-ScenName<-str_sub(as.character(scen_names[a,]),1,-16)
-
-
-#read out the actual points
-cen<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[a,])))
-
-cen<-subset(cen,cen$clus_max==1)
-
-map_tmp<-ggplot(data = bound) +
-    geom_sf() +
-    geom_density_2d_filled(mapping = aes(x=st_coordinates(cen)[,1] ,y=st_coordinates(cen)[,2]), data=cen,
-                     alpha=0.5,contour_var = "ndensity",colour=F)+
-    geom_sf(data = bound, fill = NA, color = "gray")+
-    geom_sf(data = cen, color= "black", size=0.8)+
-    ggtitle(paste(paste(paste(ScenName," with N = ",sep=""),nrow(cen),sep="")," wind turbines",sep=""))+
-   theme(axis.text=element_text(size=16)) + 
-  theme(legend.position = "none") +
-  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
-    #theme_minimal()
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/",paste(ScenName,"_n_WT_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
-plot(map_tmp)
-dev.off()
-
-}
-
-
-```
 
 ```{r}
 ## uncertainty mapping of optimal solutions
-#how often is the WT in the pareto front present?
-#1. subset the scenario according to the sum of the pareto presence as long as it reaches 4.3TWh
+### and here the same for the others (adjust accordingly)
+tmp<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_A.shp")
 
-
-for(a in 1:nrow(scen_names)){
-ScenName<-str_sub(as.character(scen_names[a,]),1,-16)
-cen<-st_read(dsn = conn, Id(schema="optim_res_201005", table = as.character(scen_names[a,])))
-
-#order production decreasing
-cen<-cen[with(cen, order(rel_nonDOM,decreasing = T)), ]
-
-#while loop to sum prod MW until 4300000 MWh/y is reached
+## important robust B3
+tmp<-tmp[order(-tmp$par_rob),]
 sum_prod = 0
 ind=0
 
-for(i in 1:nrow(cen)){
+for(i in 1:nrow(tmp)){
  if(sum_prod>4300000){
    break
    print(i)
   }
-  tmp_prod<-cen$prod_MW[i]
+  tmp_prod<-tmp$prod_MW[i]
   sum_prod<-sum_prod+tmp_prod
 }
-
 #create a subset to map  
-tmp<-cen[1:i,]
-#interactive with col according to security
-tmp$rel_security<-tmp$rel_nonDOM*100
-tmp$sec_category <- cut(tmp$rel_security, 
-                   breaks=c(0, 20, 40, 60,80,100), 
-                   labels=c("<20%","20%-39%","40%-9%","60%-79%","80%-99%","100%"))
-mapview::mapview(tmp,zcol="rel_security") 
+rob_tmp<-tmp[1:i,]
+rob_tmp<-subset(rob_tmp, rob_tmp$FFF==1)
 
-map_sec<-ggplot(tmp) +
+ 
+
+map_sec<-ggplot(rob_tmp) +
     geom_sf(data = bound, fill = NA, color = "gray", size=.8)+
-    geom_sf(data = tmp, aes(color= sec_category), show.legend = "point", size=.8)+
-    ggtitle(paste(paste(paste(ScenName," with N = ",sep=""),nrow(tmp),sep="")," wind turbines",sep=""), subtitle = paste(nrow(subset(tmp,tmp$rel_security==100))," WT's are in each pareto front present",sep=""))+
-    scale_colour_manual(values = c("<50%" = "#1fb57b", "50%-99%" = "#E08214", "100%"="#1fb57b"))+
-  scale_alpha_manual(values = c(0.3, 0.6, 1))+
+    geom_sf(data = rob_tmp, aes(color= par_rob), show.legend = "point", size=.8)+
     theme_light()+
+  scale_color_gradient(low="blue", high="red")+
    theme(axis.text=element_text(size=10))
 
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/OPTIM_RES/maps/sec_maps/",paste(ScenName,"_sec_pareto_map.jpg",sep=""),sep=""),width = 1200, height = 1200,res=300)
-plot(map_sec)
-dev.off()
+tmpB<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B4.shp")
+tmpB<-tmpB[order(-tmpB$par_rob),]
+sum_prod = 0
+ind=0
 
+for(i in 1:nrow(tmpB)){
+ if(sum_prod>4300000){
+   break
+   print(i)
+  }
+  tmp_prod<-tmpB$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
 }
+#create a subset to map  
+rob_tmpB<-tmpB[1:i,]
+
+##common important robust pts of B4 and B3
+both<-rbind(rob_tmp,rob_tmpB)
+both<-both[duplicated(both$WT_ID), ]
+ggplot(both) +
+    geom_sf(data = bound, fill = NA, color = "gray", size=.8)+
+    geom_sf(data = both, aes(color= prod_MW), show.legend = "point", size=1)+
+    theme_light()
+
+sum(both$prod_MW)
+
 ```
 
 
