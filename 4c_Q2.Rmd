@@ -1,0 +1,209 @@
+---
+title: "4c_Q2"
+author: "R.Spielhofer"
+date: "9 Dezember 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+require(raster)
+require(rgdal)
+require(dplyr)
+require(sf)
+require(sp)
+require(ggplot2)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+require(ggpubr)
+require(spatstat)
+require(rstatix)
+require(reticulate)
+require(tidyr)
+require(maptools)
+require(RPostgres)
+require(stringr)
+require(car)
+library(onewaytests)
+library(psych)
+library(plot3D)
+```
+
+
+# Spatial effects
+
+```{r}
+
+###localhost
+pts<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_A.shp")
+bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
+LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
+bound<-st_transform(bound,crs = "+init=epsg:21781") 
+
+
+## important robust B3
+pts<-pts[order(-pts$par_rob),]
+sum_prod = 0
+ind=0
+
+for(i in 1:nrow(pts)){
+ if(sum_prod>4300000){
+   break
+   print(i)
+  }
+  tmp_prod<-pts$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
+}
+#create a subset to map  
+rob_pts<-pts[1:i,]
+ppptmp<-as.ppp(rob_pts)
+
+nndist<-mean(nndist(ppptmp))
+
+#compute the spatial distribution of robust solution with CE index
+#convert the pts in ppp and the polygon into owin in order to compute clark evans
+b<-as(st_zm(bound), "Spatial")
+y <- as(b, "SpatialPolygons")
+LT_owin <- as.owin(y)
+clarkevans(ppptmp, clipregion =  LT_owin)
+
+ALTI<-mean(rob_pts$ALTI)
+M_NDIST_HZ<-mean(rob_pts$DIST_HZ)
+M_NDIST_ROAD<-mean(rob_pts$weigh_stre)
+
+
+#here we can plot the 30 nearest neighbors and their average distances
+ANN <- apply(nndist(ppptmp, k=1:30),2,FUN=mean)
+plot(ANN ~ eval(1:30), type="b", main=NULL, las=1)
+
+```
+
+## maps
+```{r}
+map_tmp<-ggplot(data = bound) +
+    geom_sf() +
+    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_pts)[,1] ,y=st_coordinates(rob_pts)[,2]), data=rob_pts,
+                     alpha=0.5,contour_var = "ndensity",colour=F)+
+    geom_sf(data = bound, fill = NA, color = "gray")+
+    geom_sf(data = rob_pts, color= "black", size=0.8)
+```
+
+## Distribution in landscape types
+```{r}
+#BARPLOT for LT distribution from csv
+LT_WT<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/LT_WT_201207.csv", sep=";")
+ggbarplot(LT_WT, x= "POLICY", y= "N_WT", color = "LANDSCAPE_TYPE",
+  fill = "LANDSCAPE_TYPE", palette = c( "#808000","#808080", "#008080"))+
+    facet_wrap(~RESTRICTION)+
+  theme_gray()
+
+```
+
+
+# Trade off analysis
+
+## 2D scatter plot
+```{r}
+pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
+pareto<-subset(pareto,pareto$MODEL_RUN==201201)
+pareto<-subset(pareto,pareto$RESTRICTION == "relaxing")
+# restrictive scen
+tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
+
+#relaxing scen
+tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
+
+tmp_dat$SCENARIO<-as.factor(tmp_dat$SCENARIO)
+
+pareto$ratioWT_CLUS<-pareto$N_WT/pareto$CLUS
+
+num<-c(1,2,3,4)
+tmp_dat$num<-num[as.factor(tmp_dat$SCENARIO)]
+
+A<-scatter2D(tmp_dat$N_WT, tmp_dat$CLUS,
+          colvar = as.integer(tmp_dat$num),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
+          xlab = "min<--N_WT",
+          ylab ="min<--CLUSTER",
+          cex=0.5, bty = "b2",
+          colkey = list(at = c(1,2, 3, 4), side = 1, 
+          addlines = TRUE, length = 0.5, width = 0.5,
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
+          )
+B<-scatter2D(tmp_dat$N_WT, tmp_dat$ENERDENS,
+          colvar = as.integer(tmp_dat$num),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
+          xlab = "min<--N_WT",
+          ylab ="enerdens-->max",
+          cex=0.5, bty = "b2",
+          colkey = list(at = c(1,2, 3, 4), side = 1, 
+          addlines = TRUE, length = 0.5, width = 0.5,
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
+          )
+C<-scatter2D(tmp_dat$CLUS, tmp_dat$ENERDENS,
+          colvar = as.integer(tmp_dat$num),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
+          xlab = "min<--CLUSTER",
+          ylab ="enerdens-->max",
+          cex=0.5, bty = "b2",
+          colkey = list(at = c(1,2, 3, 4), side = 1, 
+          addlines = TRUE, length = 0.5, width = 0.5,
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
+          )
+### trade off regression
+
+ggplot(pareto, aes(x=CLUS, y=ENERDENS, group = POLICY)) + 
+  geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
+  scale_color_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+  geom_point(shape = 4, alpha = 0.1, size =0.1)+
+  #stat_cor(label.x = 0.4, label.y = 0.55)+
+  #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
+  #facet_wrap(~POLICY)+
+  theme_light()
+
+
+```
+
+
+## 3D Pareto front
+```{r}
+
+scatter3d(tmp_dat$N_WT, tmp_dat$CLUS, tmp_dat$ENERDENS,
+          xlab = "min<--N_WT",
+          ylab ="min<--CLUSTER", 
+          zlab = "max<--ENERDENSx",
+          groups = tmp_dat$SCENARIO,
+          surface = F,
+          axis.scales = T,
+          axis.ticks = T,
+          ellipsoid = T,
+          sphere.size = T)
+
+# Add small dots on basal plane and on the depth plane
+scatter3D_fancy <- function(x, y, z,..., colvar = colvar)
+  {
+   panelfirst <- function(pmat) {
+      XY <- trans3D(x, y, z = rep(min(z), length(z)), pmat = pmat)
+      scatter2D(XY$x, XY$y, col = "#999999", pch = ".", 
+              cex = 0.1, add = TRUE, colkey = FALSE)
+   
+      XY <- trans3D(x = rep(min(x), length(x)), y, z, pmat = pmat)
+      scatter2D(XY$x, XY$y, col = "#999999", pch = ".", 
+              cex = 0.1, add = TRUE, colkey = FALSE)
+  }
+  scatter3D(x, y, z, ..., colvar = colvar, panel.first=panelfirst) 
+}
+
+scatter3D_fancy(tmp_dat$N_WT, tmp_dat$CLUS, tmp_dat$ENERDENS,
+          colvar = as.integer(tmp_dat$num),
+          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
+          xlab = "min<--N_WT",
+          ylab ="min<--CLUSTER", 
+          zlab = "max<--ENERDENS",
+          theta = 25,d = 1, phi = 0, cex=0.3, bty = "b2",ticktype = "detailed",colkey = list(at = c(1,2, 3, 4), side = 1, 
+          addlines = TRUE, length = 0.5, width = 0.5,
+          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-")))
+              
+```

@@ -1,0 +1,138 @@
+---
+title: "4d_imp_areas"
+author: "R.Spielhofer"
+date: "9 Dezember 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+require(raster)
+require(rgdal)
+require(dplyr)
+require(sf)
+require(sp)
+require(ggplot2)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+require(ggpubr)
+require(spatstat)
+require(rstatix)
+require(reticulate)
+require(tidyr)
+require(maptools)
+require(RPostgres)
+require(stringr)
+require(car)
+library(onewaytests)
+library(psych)
+library(plot3D)
+```
+
+
+# Spatial effects
+
+```{r}
+
+###localhost
+pts<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B4.shp")
+bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
+#LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
+bound<-st_transform(bound,crs = "+init=epsg:21781") 
+
+
+## important robust B3
+pts<-pts[order(-pts$par_rob),]
+sum_prod = 0
+ind=0
+
+for(i in 1:nrow(pts)){
+ if(sum_prod>4300000){
+   break
+   print(i)
+  }
+  tmp_prod<-pts$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
+}
+ 
+rob_pts<-pts[1:i,]
+
+# MWH in restricted areas
+sum(subset(rob_pts,rob_pts$FFF==0 & rob_pts$DIST_FOR>1 & rob_pts$DIST_ISOS>1000)$prod_MW)
+
+
+
+
+```
+
+```{r}
+imp_part<-subset(rob_pts,rob_pts$DIST_FOR<1)
+hist(imp_part$LT)
+```
+
+```{r}
+#import the relative deltas 
+rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/delta_rel_201208.csv",sep=";")
+
+#plot pos neg bar
+ggplot(data = rel_delt,
+       aes(x = REL_DIFF, y = WT_in_restr,
+           fill = REL_DIFF > 0))+
+  geom_bar(stat = "identity")+
+  facet_wrap(~SCENARIO)+
+  labs(y="Areas for allocating WT", x = "Relative change of produced MWh/y compared to baseline scenario")+
+  theme(axis.title = element_text(size =16), axis.text = element_text(size=10))+
+  scale_fill_manual(values=c( "#31913e","#eb4034"))+
+  coord_flip()
+```
+
+
+## maps
+```{r}
+map_tmp<-ggplot(data = bound) +
+    geom_sf() +
+    geom_sf(data = bound, fill = NA, color = "gray")+
+    geom_sf(data = imp_part, aes(color= prod_MW), size=0.8)
+
+```
+
+#sCENARIO COMPARISON
+```{r}
+tmpA<-rob_pts
+tmpB<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B4_FFF-.shp")
+tmpB<-tmpB[order(-tmpB$par_rob),]
+sum_prod = 0
+ind=0
+
+for(i in 1:nrow(tmpB)){
+ if(sum_prod>4300000){
+   break
+   print(i)
+  }
+  tmp_prod<-tmpB$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
+}
+#create a subset to map  
+rob_tmpB<-tmpB[1:i,]
+
+
+#merge the two pts to compare
+joined<-st_join(rob_tmpB,tmpA)
+joined<-joined[,-c(40:78)]
+names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
+joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
+
+joined<-subset(joined,joined$rob_parB3>0 & joined$FFF.x==1)
+#we calculate the difference between the "security" of wind turbines of B3 and B4
+joined$delta_rob<-(joined$par_rob.x-joined$rob_parB3)
+
+ggplot(data = bound) +
+    geom_sf() +
+    geom_sf(data = bound, fill = NA, color = "gray")+
+    geom_sf(data = joined, aes(color= prod_MW.x), size=0.8)
+sum(joined$prod_MW.x)
+
+```
+
