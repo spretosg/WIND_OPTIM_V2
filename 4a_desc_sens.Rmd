@@ -36,6 +36,7 @@ library(plot3D)
 ```{r}
 cur_dat<-Sys.Date()
 pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
+pareto<-subset(pareto,pareto$MODEL_RUN==201210 | pareto$MODEL_RUN==201213)
 
 
 #make the SCENARIOS as factors
@@ -53,7 +54,7 @@ pol_names<-levels(pareto$POLICY)
 
 pareto$MODEL_RUN<-as.factor(pareto$MODEL_RUN)
 # restrictive scen
-#tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
+tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
 
 #relaxing scen
 #tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
@@ -62,19 +63,19 @@ pareto$MODEL_RUN<-as.factor(pareto$MODEL_RUN)
 # Sensitivity analysis (effect of Optimization parameter settings)
 ```{r}
 
-summary(lm(ENERDENS~MODEL_RUN+SCENARIO,pareto))
-summary(lm(N_WT~MODEL_RUN+SCENARIO,pareto))
-summary(lm(CLUS~MODEL_RUN+SCENARIO,pareto))
+summary(lm(ENERDENS~MODEL_RUN+SCENARIO,tmp_dat))
+summary(lm(N_WT~MODEL_RUN+SCENARIO,tmp_dat))
+summary(lm(CLUS~MODEL_RUN+SCENARIO,tmp_dat))
 
 
 
-wilcox.test(tmp$CLUS ~ tmp$MODEL_RUN)
+wilcox.test(tmp_dat$CLUS ~ tmp_dat$MODEL_RUN)
 #graphical check
-ggplot(tmp_par, aes(x=as.factor(MODEL_RUN), y=CLUS)) +   
+ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=CLUS)) +   
     geom_boxplot()
-ggplot(tmp_par, aes(x=as.factor(MODEL_RUN), y=N_WT)) +   
+ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=N_WT)) +   
     geom_boxplot()
-ggplot(tmp_par, aes(x=as.factor(MODEL_RUN), y=ENERDENS)) +   
+ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=ENERDENS)) +   
     geom_boxplot()
 
 ```

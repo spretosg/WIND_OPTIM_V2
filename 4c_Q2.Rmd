@@ -37,7 +37,7 @@ library(plot3D)
 ```{r}
 
 ###localhost
-pts<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_A.shp")
+pts<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B3_FOR+.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
@@ -107,8 +107,8 @@ ggbarplot(LT_WT, x= "POLICY", y= "N_WT", color = "LANDSCAPE_TYPE",
 ## 2D scatter plot
 ```{r}
 pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
-pareto<-subset(pareto,pareto$MODEL_RUN==201201)
-pareto<-subset(pareto,pareto$RESTRICTION == "relaxing")
+pareto<-subset(pareto,pareto$MODEL_RUN==201210)
+tmp_dat<-subset(pareto,pareto$RESTRICTION == "restrictive")
 # restrictive scen
 tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
 
@@ -130,7 +130,7 @@ A<-scatter2D(tmp_dat$N_WT, tmp_dat$CLUS,
           cex=0.5, bty = "b2",
           colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
+          labels = c("B3", "B3_CRF+","B3_FOR+", "B3_ISOS+"))
           )
 B<-scatter2D(tmp_dat$N_WT, tmp_dat$ENERDENS,
           colvar = as.integer(tmp_dat$num),
@@ -154,14 +154,45 @@ C<-scatter2D(tmp_dat$CLUS, tmp_dat$ENERDENS,
           )
 ### trade off regression
 
-ggplot(pareto, aes(x=CLUS, y=ENERDENS, group = POLICY)) + 
+ggplot(tmp_dat, aes(x=N_WT, y=CLUS, group = POLICY)) + 
   geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
-  scale_color_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+  scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff"))+
   geom_point(shape = 4, alpha = 0.1, size =0.1)+
   #stat_cor(label.x = 0.4, label.y = 0.55)+
   #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
   #facet_wrap(~POLICY)+
-  theme_light()
+  labs(x ="min <-- N_WT", y = "Clark evans ind. <-- min")+
+  theme_light()+
+   theme(axis.text=element_text(size=13),
+        axis.title=element_text(size=15))
+
+
+ggplot(tmp_dat, aes(x=N_WT, y=ENERDENS, group = POLICY)) + 
+  geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
+  scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff"))+
+  geom_point(shape = 4, alpha = 0.1, size =0.1)+
+  #stat_cor(label.x = 0.4, label.y = 0.55)+
+  #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
+  #facet_wrap(~POLICY)+
+  theme_light()+
+    labs(x ="min <-- N_WT", y = "energy density [MWh/yha] --> max")+
+  theme_light()+
+   theme(axis.text=element_text(size=13),
+        axis.title=element_text(size=15))
+
+
+ggplot(tmp_dat, aes(x=CLUS, y=ENERDENS, group = POLICY)) + 
+  geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
+  scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff"))+
+  geom_point(shape = 4, alpha = 0.1, size =0.1)+
+  #stat_cor(label.x = 0.4, label.y = 0.55)+
+  #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
+  #facet_wrap(~POLICY)+
+  theme_light()+
+    labs(x ="min <-- Clark evans ind.", y = "energy density [MWh/yha] --> max")+
+  theme_light()+
+   theme(axis.text=element_text(size=13),
+        axis.title=element_text(size=15))
 
 
 ```
@@ -204,6 +235,6 @@ scatter3D_fancy(tmp_dat$N_WT, tmp_dat$CLUS, tmp_dat$ENERDENS,
           zlab = "max<--ENERDENS",
           theta = 25,d = 1, phi = 0, cex=0.3, bty = "b2",ticktype = "detailed",colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-")))
+          labels = c("B3", "B3_CRF+","B3_FOR+", "B3_ISOS+")))
               
 ```
