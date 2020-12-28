@@ -1,0 +1,138 @@
+---
+title: "4a_desc_sens"
+author: "R.Spielhofer"
+date: "9 Dezember 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+require(raster)
+require(rgdal)
+require(dplyr)
+require(sf)
+require(sp)
+require(ggplot2)
+require(tmap)
+require(tmaptools)
+require(DBI)
+require(RPostgreSQL)
+require(rpostgis)
+require(ggpubr)
+require(spatstat)
+require(rstatix)
+require(reticulate)
+require(tidyr)
+require(maptools)
+require(RPostgres)
+require(stringr)
+require(car)
+library(onewaytests)
+library(psych)
+library(plot3D)
+```
+
+#Load the pareto data
+```{r}
+cur_dat<-Sys.Date()
+pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
+pareto<-subset(pareto,pareto$MODEL_RUN==201210 | pareto$MODEL_RUN==201213)
+
+
+#make the SCENARIOS as factors
+pareto$SCENARIO<-as.factor(pareto$SCENARIO)
+pareto$SCENARIO<-factor(pareto$SCENARIO, levels=c("B3","B3_FOR+","B3_CRF+","B3_ISOS+","B4_FOR-","B4_CRF-","B4_ISOS-","B4"))
+scen_names<-levels(pareto$SCENARIO)
+
+pareto$RESTRICTION<-as.factor(pareto$RESTRICTION)
+pareto$RESTRICTION<-factor(pareto$RESTRICTION, levels=c("restrictive","relaxing"))
+rel_names<-levels(pareto$RESTRICTION)
+
+pareto$POLICY<-as.factor(pareto$POLICY)
+pareto$POLICY<-factor(pareto$POLICY, levels=c("base","FOR","CRF","ISOS"))
+pol_names<-levels(pareto$POLICY)
+
+pareto$MODEL_RUN<-as.factor(pareto$MODEL_RUN)
+# restrictive scen
+tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
+
+#relaxing scen
+#tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
+```
+
+# Sensitivity analysis (effect of Optimization parameter settings)
+```{r}
+
+summary(lm(ENERDENS~MODEL_RUN+SCENARIO,tmp_dat))
+summary(lm(N_WT~MODEL_RUN+SCENARIO,tmp_dat))
+summary(lm(CLUS~MODEL_RUN+SCENARIO,tmp_dat))
+
+
+
+wilcox.test(tmp_dat$CLUS ~ tmp_dat$MODEL_RUN)
+#graphical check
+ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=CLUS)) +   
+    geom_boxplot()
+ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=N_WT)) +   
+    geom_boxplot()
+ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=ENERDENS)) +   
+    geom_boxplot()
+
+```
+
+
+#Spatial distribution
+```{r}
+
+```
+
+# Boxplot
+
+
+```{r descriptives}
+
+#descriptive table for appendix
+desc<-as.data.frame(describeBy(pareto[,1:3],pareto$SCENARIO))
+
+#Tabular form
+desc_mw<-describeBy(x=pareto[3],group=pareto$SCENARIO, mat = T)
+desc_WT<-describeBy(x=pareto[1],group=pareto$SCENARIO, mat = T)
+desc_clus<-describeBy(x=pareto[2],group=pareto$SCENARIO, mat = T)
+write.csv(desc_mw, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"mw_desc.csv",sep="_"),sep=""))
+write.csv(desc_WT, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"WT_desc.csv",sep="_"),sep=""))
+write.csv(desc_clus, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"clus_desc.csv",sep="_"),sep=""))
+
+#######Box plots to explore the data of the three goals for each scenario
+clus<-ggplot(pareto, aes(x=as.factor(POLICY), y=CLUS, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+    labs(x ="POLICIES", y = "Clark-Evans ind. <--min")
+
+n_WT<-ggplot(pareto, aes(x=as.factor(POLICY), y=N_WT, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+    labs(x ="POLICIES", y = "number of WT. <--min")+
+    theme(axis.title.x = element_blank()) 
+    
+ener<-ggplot(pareto, aes(x=as.factor(POLICY), y=ENERDENS, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+
+    labs(x ="POLICIES", y = "Energy density [MWh/yha]. --> max")+
+    theme(axis.title.x = element_blank())
+
+plot_tmp<-ggarrange(ener, n_WT, clus,  ncol = 1,nrow = 3, common.legend = T,labels = "auto")    
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/descriptives/",paste(name,"_fitness_box.jpg",sep=""),sep=""),width = 1500, height = 2000)
+plot(plot_tmp)
+dev.off()
+
+
+```
