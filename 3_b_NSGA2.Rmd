@@ -31,11 +31,11 @@ require(RPostgreSQL)
 require(ggpubr)
 
 
-con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
-                        = "reto89LLSIMI")
+#con<- dbConnect(Postgres(), dbname = "publication_3_fin", host = "localhost", user = "postgres", password
+ #                       = "reto89LLSIMI")
 
 
-◘#st_write(tmp,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
+#st_write(tmp,dsn = con, Id(schema="WT_PU_HEX", table = "CEN_FIN_201008"))
 
 
 ```
@@ -297,24 +297,72 @@ out_path<-paste(main_path,"out",sep="/")
 
 Sys.setenv(RETICULATE_PYTHON = "C:/Python27/ArcGISx6410.7/python.exe")
 use_python("C:/Python27/ArcGISx6410.7/python.exe",required = TRUE)
-source_python("D:/04_PROJECTS/2001_WIND_OPTIM/NSGA3/NSGA_3_new.py")
+source_python("D:/04_PROJECTS/2001_WIND_OPTIM/NSGA3/NSGA3_201210.py")
 cur_dat<-Sys.Date()
+run_path<-paste(out_path,paste("run",cur_dat,sep = "_"),sep = "/")
+dir.create(run_path)
   
 #check the files in the input directory
 file.names <- dir(in_path, pattern =".shp")
 ## how many iterations (generations) and how big is the population?
-NGEN = 3
-MU = 80
+NGEN = 10000
+MU = 220
+ # CXPB  is the probability with which two individuals are crossed
+# MUTPB is the probability for mutating an individual
+  CXPB = 0.5
+  MUTPB = 0.2
+
 
 for(n in 1:length(file.names)){
+  starttime<-Sys.time()
+  
   tmp_name<-as.character(file.names[n])
   tmp_path<-paste(in_path,tmp_name,sep = "/")
   tmp_name<-substr(tmp_name,1,nchar(tmp_name)-4)
   tmp_pts = st_read(tmp_path)
+  ##here we calculate the 0,1 vector with just the fewest WT to reach 4.3 TW
+  pts<-tmp_pts[order(-tmp_pts$prod_MW),]
+  pts$vec<-rep(0,nrow(pts))
+  sum_prod = 0
+  ind=0
+
+  for(i in 1:nrow(pts)){
+    if(sum_prod>4300000){
+    break
+    }
+  tmp_prod<-pts$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
+  pts$vec[i] <- 1
+  }
+  #to achieve original order
+  pts<-pts[order(pts$WT_ID),]
+  
+  A<-r_to_py(pts$vec)
+  
+  ### and the max enerdens
+  pts<-tmp_pts[order(-tmp_pts$ENER_DENS),]
+  pts$vec<-rep(0,nrow(pts))
+  sum_prod = 0
+  ind=0
+
+  for(i in 1:nrow(pts)){
+    if(sum_prod>4300000){
+    break
+    }
+  tmp_prod<-pts$prod_MW[i]
+  sum_prod<-sum_prod+tmp_prod
+  pts$vec[i] <- 1
+  }
+  #to achieve original order
+  pts<-pts[order(pts$WT_ID),]
+  B<-pts$vec
+  B<-r_to_py(B)
+  
+  #transform the tmp_pts into spatial
   tmp_pts<-as_Spatial(tmp_pts)
   ####### THE python optimization
  
-  a<-optim(as.integer(MU),as.integer(NGEN), as.character(tmp_path))
+  a<-optim(as.integer(MU), as.integer(NGEN), as.character(tmp_path), CXPB, MUTPB, A, B)
   
   ### Extract the HV values for each generation
   hv<-as.data.frame(unlist(a[1]))
@@ -324,8 +372,7 @@ for(n in 1:length(file.names)){
   HV<-ggplot(data=hv, aes(x=GENERATION, y=HV, group=1)) +
   geom_line()+
   ggtitle(paste(tmp_name, paste ("_HV",cur_dat,sep="_")))
-  graph_path<-paste(out_path,"HV_graphs",sep="/")
-  jpeg(file=paste(graph_path,paste(tmp_name, ".jpg",sep=""),sep="/"))
+  jpeg(file=paste(run_path,paste("HV_graph",paste(tmp_name,"jpg",sep="."),sep="_"),sep="/"))
   plot(HV)
   dev.off()
   
@@ -333,20 +380,24 @@ for(n in 1:length(file.names)){
   ### extract the pareto robustness
   par_rob<-as.data.frame(a[2])
   #join it to the spatial pts
-  df<-left_join(tmp_pts@data, par_rob, by=c('WT_ID'='WT_ID2'))
-  tmp_pts@data<-df
+  #df<-left_join(tmp_pts@data, par_rob, by=c('WT_ID'='WT_ID2'))
+  tmp_pts$par_rob<-par_rob$par_rob
+  tmp_pts$WT_ID2<-par_rob$WT_ID2
+
   tmp_pts<-st_as_sf(tmp_pts)
   #write the pts into the postgre sql db
-  st_write(obj = tmp_pts, dsn = con, Id(schema="NSGA3_out", table = as.character(paste(tmp_name,cur_dat,sep="_"))))
+  #st_write(obj = tmp_pts, dsn = con, Id(schema="NSGA3_out", table = as.character(paste(tmp_name,cur_dat,sep="_"))))
+  #write pts as shp in folder
+  st_write(tmp_pts,paste(run_path,paste(tmp_name,"shp",sep="."),sep = "/"))
   
   ### extract the pareto fitness
   par_fit<-as.data.frame(a[3])
   #and save it
-  write.csv(par_fit,paste(out_path,paste("par_fitness",paste(tmp_name,"csv",sep="."),sep="/"),sep="/"))
+  write.csv(par_fit,paste(run_path,paste("par_fitness",paste(tmp_name,paste(cur_dat,"csv",sep="."),sep="_"),sep="_"),sep="/"))
   
   log<-as.data.frame(a[4])
   ###extract the logbook
-  write.csv(log,paste(out_path,paste("logbook",paste(tmp_name,"csv",sep="."),sep="/"),sep="/"))
+  write.csv(log,paste(run_path,paste("logbook",paste(tmp_name,paste(cur_dat,"csv",sep="."),sep="_"),sep="_"),sep="/"))
   
   #graph of the three goals from the data logger
   WT<-ggplot(data=log, aes(x=GENERATION, y=N_WT, group=1)) +
@@ -358,16 +409,23 @@ for(n in 1:length(file.names)){
   ENER<-ggplot(data=log, aes(x=GENERATION, y=ENERDENS, group=1)) +
   geom_line()
   
-  graph_path<-paste(out_path,"log_graphs",sep="/")
+  graph_path<-paste(run_path,paste("log_graphs",cur_dat,sep="_"),sep="/")
   tmp_plt<-ggarrange(WT,CLUS,ENER,3,1,c("min_NWT","max_clus","max_enerdens"))
-  jpeg(file=paste(graph_path,paste(tmp_name, ".jpg",sep=""),sep="/"))
+  jpeg(file=paste(run_path,paste("log_graphs",paste(tmp_name,"jpg",sep="."),sep="_"),sep="/"))
   plot(tmp_plt)
   dev.off()
   
+  endtime<-Sys.time()
+  calcTime<-endtime-starttime
+  print("------------------------------next scenario------------------------------------------")
 }
 
+#write some parameters into df
+stats<-data.frame(matrix(1,0,5))
+names(stats)<-c("N-scen","NGEN","MU","CXPB","MUTPB")
+stats[1,]<-c(as.integer(length(file.names)),as.integer(NGEN),as.integer(MU),CXPB,MUTPB)
 
-
+write.csv(stats,file = paste(run_path,"parameters.csv",sep="/"))
 
 ```
 
