@@ -37,13 +37,19 @@ library(plot3D)
 ```{r}
 
 ###localhost
-pts<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B4.shp")
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_selection/B3.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 #LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
+dem<- raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/dem_proj.tif")
+# convert to a df for plotting in two steps,
+# First, to a SpatialPointsDataFrame
+DEM_pts <- rasterToPoints(dem, spatial = TRUE)
+# Then to a 'conventional' dataframe
+dem_df  <- data.frame(DEM_pts)
+rm(DEM_pts, dem)
 
-
-## important robust B3
+## important robust pts
 pts<-pts[order(-pts$par_rob),]
 sum_prod = 0
 ind=0
@@ -60,7 +66,7 @@ for(i in 1:nrow(pts)){
 rob_pts<-pts[1:i,]
 
 # MWH in restricted areas
-sum(subset(rob_pts,rob_pts$FFF==0 & rob_pts$DIST_FOR>1 & rob_pts$DIST_ISOS>1000)$prod_MW)
+sum(subset(rob_pts,rob_pts$FFF==1 & rob_pts$DIST_FOR<1 & rob_pts$DIST_ISOS>1000)$prod_MW)
 
 
 
@@ -74,7 +80,7 @@ hist(imp_part$LT)
 
 ```{r}
 #import the relative deltas 
-rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/delta_rel_201208.csv",sep=";")
+rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/delta_rel_201228.csv",sep=",")
 
 #plot pos neg bar
 ggplot(data = rel_delt,
@@ -101,7 +107,7 @@ map_tmp<-ggplot(data = bound) +
 #sCENARIO COMPARISON
 ```{r}
 tmpA<-rob_pts
-tmpB<-st_read("Y:/people/spreto/2001_WIND_OPTIM/spat_pts_201204/B4_FFF-.shp")
+tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_selection/B4.shp")
 tmpB<-tmpB[order(-tmpB$par_rob),]
 sum_prod = 0
 ind=0
@@ -124,14 +130,32 @@ joined<-joined[,-c(40:78)]
 names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
 joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
 
-joined<-subset(joined,joined$rob_parB3>0 & joined$FFF.x==1)
-#we calculate the difference between the "security" of wind turbines of B3 and B4
-joined$delta_rob<-(joined$par_rob.x-joined$rob_parB3)
+#in B3 and B4
+
+joined<-subset(joined,joined$rob_parB3>0)
 
 ggplot(data = bound) +
     geom_sf() +
-    geom_sf(data = bound, fill = NA, color = "gray")+
-    geom_sf(data = joined, aes(color= prod_MW.x), size=0.8)
+    geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj))+
+    scale_fill_gradientn(colours=c(low =  	"#5a5a5a" , high = "white"))+
+    geom_sf(data = bound, fill = NA, color = "white")+
+    geom_sf(data = joined,  size=2.2, col="orange", fill="orange", shape = 21)+
+    theme_light()
+
+## in forests or CRF
+
+joined<-subset(joined,joined$rob_parB3>0 & joined$FFF==1)
+#joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_FOR<1)
+#we calculate the difference between the "security" of wind turbines of B3 and B4
+#joined$delta_rob<-(joined$par_rob.x-joined$rob_parB3)
+ggplot(data = bound) +
+    geom_sf() +
+    geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj))+
+    scale_fill_gradientn(colours=c(low =  	"#5a5a5a" , high = "white"))+
+    geom_sf(data = bound, fill = NA, color = "white")+
+    geom_sf(data = joined, size=2.2, shape = 21, fill ="orange", color = "orange")+
+    #scale_colour_gradient2(midpoint= 0, low =  	"white" , mid="orange", high = "white")+
+    theme_light()
 sum(joined$prod_MW.x)
 
 ```

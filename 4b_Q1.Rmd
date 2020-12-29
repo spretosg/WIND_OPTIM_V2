@@ -35,7 +35,8 @@ library(plot3D)
 #Load the pareto data
 ```{r}
 cur_dat<-Sys.Date()
-pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
+#here we import the best model runs for each
+pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/NSGA3_RES/out/fitness_selection_201228.csv", sep=",")
 
 # restrictive scen
 tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
@@ -65,13 +66,50 @@ levene_test(tmp_dat,N_WT~SCENARIO,center = mean)
 #make comparison group manual
 tmp_dat2<-subset(tmp_dat, tmp_dat$SCENARIO=="B4"|tmp_dat$SCENARIO=="B4_CRF-")
 
-wilcox.test(tmp_dat2$CLUS ~ tmp_dat2$SCENARIO)
+wilcox.test(tmp_dat2$N_WT ~ tmp_dat2$SCENARIO)
 
 #if normal distributed but homogen variances == welch t.test
 w<-welch.test(N_WT~SCENARIO,tmp_dat)
 paircomp(w)
 #if both given == t.test
 t.test(a$number_WT,b$number_WT,alternative = "two.sided", var.equal = FALSE)
+
+```
+
+
+
+```{r}
+#######Box plots to explore the data of the three goals for each scenario
+clus<-ggplot(pareto, aes(x=as.factor(POLICY), y=CLUS, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#0080ff","#00994D", "#ff33ff"))+
+    labs(x ="POLICIES", y = "Clark-Evans ind. <--min")
+
+n_WT<-ggplot(pareto, aes(x=as.factor(POLICY), y=N_WT, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#0080ff","#00994D", "#ff33ff"))+
+    labs(x ="POLICIES", y = "number of WT. <--min")+
+    theme(axis.title.x = element_blank()) 
+    
+ener<-ggplot(pareto, aes(x=as.factor(POLICY), y=ENERDENS, fill = POLICY)) +   
+    geom_boxplot()+
+    facet_wrap(~RESTRICTION)+
+    #theme_light()+
+    theme(legend.position = "none")+
+    scale_fill_manual(values=c("#FF8000", "#0080ff","#00994D", "#ff33ff"))+
+    labs(x ="POLICIES", y = "Energy density [MWh/yha]. --> max")+
+    theme(axis.title.x = element_blank())
+
+plot_tmp<-ggarrange(ener, n_WT, clus,  ncol = 1,nrow = 3, common.legend = T,labels = "auto")    
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/descriptives/",paste(cur_dat,"_fitness_box.jpg",sep=""),sep=""),width = 1500, height = 2000)
+plot(plot_tmp)
+dev.off()
 
 ```
 
