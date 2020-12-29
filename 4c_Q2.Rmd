@@ -42,6 +42,14 @@ bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
 
+dem<- raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/dem_proj.tif")
+# convert to a df for plotting in two steps,
+# First, to a SpatialPointsDataFrame
+DEM_pts <- rasterToPoints(dem, spatial = TRUE)
+# Then to a 'conventional' dataframe
+dem_df  <- data.frame(DEM_pts)
+rm(DEM_pts, dem)
+
 
 ## important robust pts
 pts<-pts[order(-pts$par_rob),]
@@ -84,10 +92,17 @@ plot(ANN ~ eval(1:30), type="b", main=NULL, las=1)
 ```{r}
 map_tmp<-ggplot(data = bound) +
     geom_sf() +
-    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_pts)[,1] ,y=st_coordinates(rob_pts)[,2]), data=rob_pts,
-                     alpha=0.5,contour_var = "ndensity",colour=F)+
-    geom_sf(data = bound, fill = NA, color = "gray")+
-    geom_sf(data = rob_pts, color= "black", size=0.8)
+    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_pts)[,1] ,y=st_coordinates(rob_pts)[,2], fill= ..level.., alpha= ..level..), data=rob_pts, contour_var = "ndensity")+
+    geom_sf(data = rob_pts, color= "black", size=0.8)+
+     geom_sf(data = bound, fill = NA, color = "gray")+
+
+
+
+
+  scale_fill_manual(limits = c("0.5","0.7","0.9"), values = c("red","green","blue"))+
+    geom_sf(data = rob_pts, color= "black", size=0.8)+
+     geom_sf(data = bound, fill = NA, color = "gray")
+
 ```
 
 ## Distribution in landscape types
