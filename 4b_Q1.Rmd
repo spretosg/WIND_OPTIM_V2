@@ -39,24 +39,26 @@ cur_dat<-Sys.Date()
 pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/NSGA3_RES/out/fitness_selection_201228.csv", sep=",")
 
 # restrictive scen
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
+tmp_dat<-subset(pareto, pareto$SCEN=="B3"|pareto$SCEN=="B3_FOR+"|pareto$SCEN=="B3_ISOS+"|pareto$SCEN=="B3_CRF+")
 
 #relaxing scen
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
+tmp_dat<-subset(pareto, pareto$SCEN=="B4"|pareto$SCEN=="B4_FOR-"|pareto$SCEN=="B4_ISOS-"|pareto$SCEN=="B4_CRF-")
 ```
 
 # Check data variance and distribution
 ```{r preconditions}
 #1. CHECK FOR NORMAL DISTR
-tmp_dat %>%
-  group_by(SCENARIO) %>%
-  shapiro_test(N_WT)
+a<-as.data.frame(pareto %>%
+  group_by(SCEN) %>%
+  shapiro_test(ENERDENS))
+write.csv(a, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WIND_OPTIM/Tables/",paste(cur_dat,"shap_tmp.csv",sep="_"),sep=""))
+
 #density plots per scen
-ggplot(data=pareto, aes(x=ENERDENS, group=SCENARIO, fill=SCENARIO)) +
+ggplot(data=pareto, aes(x=ENERDENS, group=SCEN, fill=SCEN)) +
     geom_density(adjust=1.5)+ 
-    facet_wrap(~SCENARIO) 
+    facet_wrap(~SCEN) 
 #homogeneity of variance
-levene_test(tmp_dat,N_WT~SCENARIO,center = mean)
+levene_test(tmp_dat,N_WT~SCEN,center = mean)
 ```
 
 ## and the appropriate test to compare the scenario means

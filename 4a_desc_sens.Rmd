@@ -36,13 +36,11 @@ library(plot3D)
 ```{r}
 cur_dat<-Sys.Date()
 pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/NSGA3_RES/out/fitness_all_201228.csv", sep=",")
-#pareto<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/par_fitness_all_201130.csv", sep=",")
-#pareto<-subset(pareto,pareto$MODEL_RUN==A | pareto$MODEL_RUN==B)
 
 
 #make the SCENARIOS as factors
-pareto$SCENARIO<-as.factor(pareto$SCENARIO)
-scen_names<-levels(pareto$SCENARIO)
+pareto$SCEN<-as.factor(pareto$SCEN)
+scen_names<-levels(pareto$SCEN)
 
 pareto$RESTRICTION<-as.factor(pareto$RESTRICTION)
 res_names<-levels(pareto$RESTRICTION)
@@ -50,30 +48,30 @@ res_names<-levels(pareto$RESTRICTION)
 pareto$POLICY<-as.factor(pareto$POLICY)
 pol_names<-levels(pareto$POLICY)
 
-pareto$MODEL_RUN<-as.factor(pareto$MODEL_RUN)
-mod_names<-levels(pareto$MODEL_RUN)
+pareto$MODEL<-as.factor(pareto$MODEL)
+mod_names<-levels(pareto$MODEL)
 # restrictive scen
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
+tmp_dat<-subset(pareto, pareto$SCEN=="B3"|pareto$SCEN=="B3_FOR+"|pareto$SCEN=="B3_ISOS+"|pareto$SCEN=="B3_CRF+")
 
 #relaxing scen
-#tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
+#tmp_dat<-subset(pareto, pareto$SCEN=="B4"|pareto$SCEN=="B4_FOR-"|pareto$SCEN=="B4_ISOS-"|pareto$SCEN=="B4_CRF-")
 ```
 
 # Sensitivity analysis (effect of Optimization parameter settings)
 ```{r}
 
-summary(lm(ENERDENS~MODEL_RUN+POLICY+RESTRICTION,pareto))
-summary(lm(N_WT~MODEL_RUN+POLICY+RESTRICTION,pareto))
-summary(lm(CLUS~MODEL_RUN+POLICY+RESTRICTION,pareto))
+summary(lm(ENERDENS~MODEL+SCEN,pareto))
+summary(lm(N_WT~MODEL+SCEN,pareto))
+summary(lm(CLUS~MODEL+SCEN,pareto))
 
 
 
 #graphical check
-ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=CLUS)) +   
+ggplot(tmp_dat, aes(x=as.factor(MODEL), y=CLUS)) +   
     geom_boxplot()
-ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=N_WT)) +   
+ggplot(tmp_dat, aes(x=as.factor(MODEL), y=N_WT)) +   
     geom_boxplot()
-ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=ENERDENS)) +   
+ggplot(tmp_dat, aes(x=as.factor(MODEL), y=ENERDENS)) +   
     geom_boxplot()
 
 ```
@@ -90,7 +88,7 @@ ggplot(tmp_dat, aes(x=as.factor(MODEL_RUN), y=ENERDENS)) +
 ```{r descriptives}
 
 #descriptive table for appendix
-pareto$uni_scen<-paste(pareto$SCENARIO,pareto$MODEL_RUN,sep = "_")
+pareto$uni_scen<-paste(pareto$SCEN,pareto$MODEL,sep = "_")
 pareto$uni_scen<-as.factor(pareto$uni_scen)
 desc<-as.data.frame(describeBy(pareto[,1:3],pareto$uni_scen))
 
