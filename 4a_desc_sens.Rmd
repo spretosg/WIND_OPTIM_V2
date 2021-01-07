@@ -30,6 +30,7 @@ require(car)
 library(onewaytests)
 library(psych)
 library(plot3D)
+library(pwr)
 ```
 
 #Load the pareto data
@@ -60,9 +61,14 @@ tmp_dat<-subset(pareto, pareto$SCEN=="B3"|pareto$SCEN=="B3_FOR+"|pareto$SCEN=="B
 # Sensitivity analysis (effect of Optimization parameter settings)
 ```{r}
 
-summary(lm(ENERDENS~MODEL+SCEN,pareto))
-summary(lm(N_WT~MODEL+SCEN,pareto))
-summary(lm(CLUS~MODEL+SCEN,pareto))
+summary(aov(N_WT~MODEL*SCEN,pareto))
+eta_squared(aov(N_WT~MODEL+SCEN,pareto))
+
+summary(aov(ENERDENS~MODEL*SCEN,pareto))
+eta_squared(aov(ENERDENS~MODEL+SCEN,pareto))
+
+summary(aov(CLUS~MODEL*SCEN,pareto))
+eta_squared(aov(CLUS~MODEL+SCEN,pareto))
 
 
 
@@ -103,7 +109,7 @@ write.csv(desc_clus, paste("Y:/people/spreto/01_ETH/02_PUBLICATIONS/01_MAIN/3_WI
 #######Box plots to explore the data of the three goals for each scenario
 clus<-ggplot(pareto, aes(x=as.factor(POLICY), y=CLUS, fill = POLICY)) +   
     geom_boxplot()+
-    facet_wrap(~RESTRICTION+MODEL_RUN)+
+    facet_wrap(~RESTRICTION+MODEL)+
     #theme_light()+
     theme(legend.position = "none")+
     scale_fill_manual(values=c("#FF8000", "#00994D", "#0080ff","#ff33ff"))+

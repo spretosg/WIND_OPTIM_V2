@@ -30,6 +30,7 @@ require(car)
 library(onewaytests)
 library(psych)
 library(plot3D)
+library(coin)
 ```
 
 #Load the pareto data
@@ -66,12 +67,18 @@ levene_test(tmp_dat,N_WT~SCEN,center = mean)
 
 # if both not normal and inhomogeneity of variances == man whitney u test
 #make comparison group manual
-tmp_dat2<-subset(tmp_dat, tmp_dat$SCENARIO=="B4"|tmp_dat$SCENARIO=="B4_CRF-")
+tmp_dat2<-subset(tmp_dat,tmp_dat$SCEN=="B3_FOR+"|tmp_dat$SCEN=="B3_ISOS+")
 
-wilcox.test(tmp_dat2$N_WT ~ tmp_dat2$SCENARIO)
+tmp_dat2 %>% 
+rstatix::wilcox_test(N_WT ~ SCEN) %>%
+add_significance()
+
+ tmp_dat2 %>% 
+wilcox_effsize(N_WT ~ SCEN)
+ 
 
 #if normal distributed but homogen variances == welch t.test
-w<-welch.test(N_WT~SCENARIO,tmp_dat)
+w<-welch.test(N_WT~SCEN,tmp_dat2)
 paircomp(w)
 #if both given == t.test
 t.test(a$number_WT,b$number_WT,alternative = "two.sided", var.equal = FALSE)
