@@ -32,12 +32,9 @@ library(plot3D)
 ```
 
 
-# Spatial effects
-
 ```{r}
-
 ###localhost
-pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_selection/B4_FOR-.shp")
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/B1.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
@@ -50,6 +47,20 @@ DEM_pts <- rasterToPoints(dem, spatial = TRUE)
 dem_df  <- data.frame(DEM_pts)
 rm(DEM_pts, dem)
 
+```
+
+## maps of scenario pts for publication
+```{r}
+ggplot(data = bound) +
+    geom_sf() +
+    geom_sf(data = pts, color= "black", size=0.8)+
+     geom_sf(data = bound, fill = NA, color = "gray")+
+  theme_light()
+  
+
+```
+# The important points per scenario
+```{r}
 
 ## important robust pts
 pts<-pts[order(-pts$par_rob),]
@@ -66,6 +77,12 @@ for(i in 1:nrow(pts)){
 }
 #create a subset to map  
 rob_pts<-pts[1:i,]
+```
+
+
+
+# Spatial effects
+```{r}
 ppptmp<-as.ppp(rob_pts)
 
 nndist<-mean(nndist(ppptmp))
@@ -83,27 +100,38 @@ M_NDIST_ROAD<-mean(rob_pts$weigh_stre)
 
 
 #here we can plot the 30 nearest neighbors and their average distances
-ANN <- apply(nndist(ppptmp, k=1:30),2,FUN=mean)
-plot(ANN ~ eval(1:30), type="b", main=NULL, las=1)
+#ANN <- apply(nndist(ppptmp, k=1:30),2,FUN=mean)
+#plot(ANN ~ eval(1:30), type="b", main=NULL, las=1)
 
 ```
 
-## maps
+#density map for table with robust optimal
 ```{r}
-map_tmp<-ggplot(data = bound) +
-    geom_sf() +
-    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_pts)[,1] ,y=st_coordinates(rob_pts)[,2], fill= ..level.., alpha= ..level..), data=rob_pts, contour_var = "ndensity")+
-    geom_sf(data = rob_pts, color= "black", size=0.8)+
-     geom_sf(data = bound, fill = NA, color = "gray")+
 
+ggplot(data = bound) +
+    geom_sf(fill=NA) +
+    geom_density_2d_filled(mapping = aes(x=st_coordinates(rob_pts)[,1] ,y=st_coordinates(rob_pts)[,2], fill = ..level..,  alpha = I(.6)), size = 1, bins = 6, data = rob_pts)+
+  scale_fill_manual(values = c(NA, "grey70", "grey50","grey30", "grey15","grey5" ))+
+  geom_sf(data = rob_pts, color="red", alpha = .2)+
+     theme(panel.background = element_rect(fill = NA,
+                                colour = NA,
+                                size = 0.5, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.5, linetype = 'dashed',
+                                colour = "grey70"),
+        panel.grid.minor = element_blank(),
+        # surpress legend
+        legend.position = "none",
+        axis.line=element_blank(),
+        axis.text.x=element_text(size=18),
+        axis.text.y=element_text(size=18),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
 
-
-
-  scale_fill_manual(limits = c("0.5","0.7","0.9"), values = c("red","green","blue"))+
-    geom_sf(data = rob_pts, color= "black", size=0.8)+
-     geom_sf(data = bound, fill = NA, color = "gray")
 
 ```
+
+
 
 ## Distribution in landscape types
 ```{r}
