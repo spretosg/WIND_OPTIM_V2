@@ -25,7 +25,7 @@ require(tidyr)
 require(maptools)
 require(RPostgres)
 require(stringr)
-require(car)
+require(HH)
 library(onewaytests)
 library(psych)
 library(plot3D)
@@ -37,7 +37,7 @@ library(plot3D)
 ```{r}
 
 ###localhost
-pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_selection/B3.shp")
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ISOS.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 #LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
@@ -68,9 +68,6 @@ rob_pts<-pts[1:i,]
 # MWH in restricted areas
 sum(subset(rob_pts,rob_pts$FFF==1 & rob_pts$DIST_FOR<1 & rob_pts$DIST_ISOS>1000)$prod_MW)
 
-
-
-
 ```
 
 ```{r}
@@ -80,34 +77,24 @@ hist(imp_part$LT)
 
 ```{r}
 #import the relative deltas 
-rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/delta_rel_201228.csv",sep=",")
+rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/differences_210115.csv",sep=",")
+rel_delt$GROUP<-as.factor(rel_delt$GROUP)
 
-#plot pos neg bar
-ggplot(data = rel_delt,
-       aes(x = REL_DIFF, y = WT_in_restr,
-           fill = REL_DIFF > 0))+
-  geom_bar(stat = "identity")+
-  facet_wrap(~SCENARIO)+
-  labs(y="Areas for allocating WT", x = "Relative change of produced MWh/y compared to baseline scenario")+
-  theme(axis.title = element_text(size =16), axis.text = element_text(size=10))+
-  scale_fill_manual(values=c( "#31913e","#eb4034"))+
-  coord_flip()
-```
+a<-subset(rel_delt,rel_delt$Landscape=="CRF_only")
+ggplot(a, aes(x = SCEN, y = percent)) + 
+    geom_col() +
+
+    coord_flip()
 
 
-## maps
-```{r}
-map_tmp<-ggplot(data = bound) +
-    geom_sf() +
-    geom_sf(data = bound, fill = NA, color = "gray")+
-    geom_sf(data = imp_part, aes(color= prod_MW), size=0.8)
 
 ```
+
 
 #sCENARIO COMPARISON
 ```{r}
 tmpA<-rob_pts
-tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_selection/B4.shp")
+tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ALL.shp")
 tmpB<-tmpB[order(-tmpB$par_rob),]
 sum_prod = 0
 ind=0
@@ -133,30 +120,73 @@ joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
 #in B3 and B4
 
 joined<-subset(joined,joined$rob_parB3>0)
+joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
+joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
 
 ggplot(data = bound) +
-    geom_sf() +
-    geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj))+
-    scale_fill_gradientn(colours=c(low =  	"#5a5a5a" , high = "white"))+
+    geom_sf(fill=NA) +
+    geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj, alpha=1.5))+
+    scale_fill_gradientn(colours=c(low =  	"grey40" , high = "white"))+
     geom_sf(data = bound, fill = NA, color = "white")+
-    geom_sf(data = joined,  size=2.2, col="orange", fill="orange", shape = 21)+
-    theme_light()
+    geom_sf(data = joined, color="red", alpha = .2, size=joined$diff2/2)+
+    theme(panel.background = element_rect(fill = NA,
+                                colour = NA,
+                                size = 0.5, linetype = "solid"),
+        panel.grid.major = element_line(size = 0.5, linetype = 'dashed',
+                                colour = "grey70"),
+        panel.grid.minor = element_blank(),
+        # surpress legend
+        legend.position = "none",
+        axis.line=element_blank(),
+        axis.text.x=element_text(size=18),
+        axis.text.y=element_text(size=18),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
 
-## in forests or CRF
+
+#### important locations in forests
+#tmpA = ALL, tmpB = FOR (or the other way round)
+#merge the two pts to compare
+joined<-st_join(rob_tmpB,tmpA)
+joined<-joined[,-c(40:78)]
+names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
+joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
+
+joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_FOR<1)
+joined<-subset(joined,joined$rob_parB3>0)
+joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
+joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
+sum(joined$prod_MW.x)
+
+
+####important pts in FFF
+#tmpA = ALL & tmp B = CRF
+joined<-st_join(rob_tmpB,tmpA)
+joined<-joined[,-c(40:78)]
+names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
+joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
 
 joined<-subset(joined,joined$rob_parB3>0 & joined$FFF==1)
-#joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_FOR<1)
-#we calculate the difference between the "security" of wind turbines of B3 and B4
-#joined$delta_rob<-(joined$par_rob.x-joined$rob_parB3)
-ggplot(data = bound) +
-    geom_sf() +
-    geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj))+
-    scale_fill_gradientn(colours=c(low =  	"#5a5a5a" , high = "white"))+
-    geom_sf(data = bound, fill = NA, color = "white")+
-    geom_sf(data = joined, size=2.2, shape = 21, fill ="orange", color = "orange")+
-    #scale_colour_gradient2(midpoint= 0, low =  	"white" , mid="orange", high = "white")+
-    theme_light()
+joined<-subset(joined,joined$rob_parB3>0)
+joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
+joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
 sum(joined$prod_MW.x)
+
+
+####important pts in FFF
+#tmpA = ALL & tmp B = ISOS
+joined<-st_join(rob_tmpB,tmpA)
+joined<-joined[,-c(40:78)]
+names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
+joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
+
+joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_ISOS.x<1000)
+joined<-subset(joined,joined$rob_parB3>0)
+joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
+joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
+sum(joined$prod_MW.x)
+
 
 ```
 

@@ -25,7 +25,6 @@ require(tidyr)
 require(maptools)
 require(RPostgres)
 require(stringr)
-require(car)
 library(onewaytests)
 library(psych)
 library(plot3D)
@@ -34,7 +33,7 @@ library(plot3D)
 
 ```{r}
 ###localhost
-pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/B1.shp")
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/FOR.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
@@ -63,6 +62,8 @@ ggplot(data = bound) +
 ```{r}
 
 ## important robust pts
+
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ALL.shp")
 pts<-pts[order(-pts$par_rob),]
 sum_prod = 0
 ind=0
@@ -104,6 +105,18 @@ M_NDIST_ROAD<-mean(rob_pts$weigh_stre)
 #plot(ANN ~ eval(1:30), type="b", main=NULL, las=1)
 
 ```
+# number of WT in LT 
+```{r}
+dat<-as.data.frame(rob_pts)
+dat$LT_char<-recode(dat$LT, 
+                         `1`="Plat",
+                         `2`="Alps",
+                         `3`="Prealps")
+dat %>% group_by(LT_char) %>% tally()
+
+```
+
+
 
 #density map for table with robust optimal
 ```{r}
@@ -136,11 +149,21 @@ ggplot(data = bound) +
 ## Distribution in landscape types
 ```{r}
 #BARPLOT for LT distribution from csv
-LT_WT<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/LT_WT_201207.csv", sep=";")
-ggbarplot(LT_WT, x= "POLICY", y= "N_WT", color = "LANDSCAPE_TYPE",
-  fill = "LANDSCAPE_TYPE", palette = c( "#808000","#808080", "#008080"))+
-    facet_wrap(~RESTRICTION)+
-  theme_gray()
+LT_WT<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/LT_WT_210112.csv", sep=",")
+
+LT_WT$SCENARIO <- factor(LT_WT$SCENARIO,levels = c("REF", "FOR", "CRF", "ISOS", "FOR_CRF", "FOR_ISOS", "ISOS_CRF","ALL"))
+
+
+ggplot(data=LT_WT, aes(x=SCENARIO, y=N_WT, fill=LANDSCAPE_TYPE)) +
+  geom_bar(stat="identity")+
+  scale_fill_grey() + 
+  ylab("Number of WT")+
+  theme_light()+
+  theme(axis.text.x=element_text(size=14),
+        axis.text.y=element_text(size=14))
+ 
+
+
 
 ```
 
@@ -149,92 +172,65 @@ ggbarplot(LT_WT, x= "POLICY", y= "N_WT", color = "LANDSCAPE_TYPE",
 
 ## 2D scatter plot
 ```{r}
-pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/3_wp/NSGA3_RES/out/fitness_selection_201228.csv", sep=",")
+pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/fitness_selection_210113.csv", sep=",")
 
-tmp_dat<-subset(pareto,pareto$RESTRICTION == "relaxing")
-# restrictive scen
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B3"|pareto$SCENARIO=="B3_FOR+"|pareto$SCENARIO=="B3_ISOS+"|pareto$SCENARIO=="B3_CRF+")
+tmp_dat<-subset(pareto,pareto$GROUP == "A" | pareto$GROUP == "REF"| pareto$GROUP == "C")
 
-#relaxing scen
-tmp_dat<-subset(pareto, pareto$SCENARIO=="B4"|pareto$SCENARIO=="B4_FOR-"|pareto$SCENARIO=="B4_ISOS-"|pareto$SCENARIO=="B4_CRF-")
+tmp_dat<-subset(pareto,pareto$GROUP == "B" | pareto$GROUP == "REF"| pareto$GROUP == "C")
 
-tmp_dat$SCENARIO<-as.factor(tmp_dat$SCENARIO)
+
+tmp_dat$SCEN<-as.factor(tmp_dat$SCEN)
 
 num<-c(1,2,3,4)
-tmp_dat$num<-num[as.factor(tmp_dat$SCENARIO)]
+tmp_dat$num<-num[as.factor(tmp_dat$SCEN)]
 
-A<-scatter2D(tmp_dat$N_WT, tmp_dat$CLUS,
-          colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
-          xlab = "min<--N_WT",
-          ylab ="min<--CLUSTER",
-          cex=0.5, bty = "b2",
-          colkey = list(at = c(1,2, 3, 4), side = 1, 
-          addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B3", "B3_CRF+","B3_FOR+", "B3_ISOS+"))
-          )
-B<-scatter2D(tmp_dat$N_WT, tmp_dat$ENERDENS,
-          colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
-          xlab = "min<--N_WT",
-          ylab ="enerdens-->max",
-          cex=0.5, bty = "b2",
-          colkey = list(at = c(1,2, 3, 4), side = 1, 
-          addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
-          )
-C<-scatter2D(tmp_dat$CLUS, tmp_dat$ENERDENS,
-          colvar = as.integer(tmp_dat$num),
-          col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
-          xlab = "min<--CLUSTER",
-          ylab ="enerdens-->max",
-          cex=0.5, bty = "b2",
-          colkey = list(at = c(1,2, 3, 4), side = 1, 
-          addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-"))
-          )
+
 ### trade off regression
 
-ggplot(tmp_dat, aes(x=N_WT, y=CLUS, group = POLICY)) + 
-  geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
-  scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff"))+
-  geom_point(shape = 4, alpha = 0.1, size =0.1)+
-  #stat_cor(label.x = 0.4, label.y = 0.55)+
-  #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
-  #facet_wrap(~POLICY)+
+A<-ggplot(tmp_dat, aes(x=N_WT, y=CLUS, group = SCEN)) + 
+  geom_smooth(method=lm, se=FALSE, aes(color=SCEN, linetype = SCEN))+
+  #scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff", "red"))+
+  scale_color_manual(values=c("#FF8000", "#a44a3f", "#a3b18a", "#0b090a", "red"))+
+  scale_linetype_manual(values=c("longdash", "longdash","longdash","longdash","solid"))+
+  geom_point(shape = 4, alpha = 0.1, size =0.1, color = "grey40")+
+
   labs(x ="min <-- N_WT", y = "Clark evans ind. <-- min")+
   theme_light()+
-   theme(axis.text=element_text(size=13),
-        axis.title=element_text(size=15))
+  theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=18),
+        legend.text = element_text(size=20),
+        legend.title = element_blank())
+   
 
 
-ggplot(tmp_dat, aes(x=N_WT, y=ENERDENS, group = POLICY)) + 
-  geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
-  scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff"))+
-  geom_point(shape = 4, alpha = 0.1, size =0.1)+
-  #stat_cor(label.x = 0.4, label.y = 0.55)+
-  #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
-  #facet_wrap(~POLICY)+
-  theme_light()+
-    labs(x ="min <-- N_WT", y = "energy density [MWh/yha] --> max")+
-  theme_light()+
-   theme(axis.text=element_text(size=13),
-        axis.title=element_text(size=15))
+B<-ggplot(tmp_dat, aes(x=N_WT, y=ENERDENS, group = SCEN)) + 
+geom_smooth(method=lm, se=FALSE, aes(color=SCEN, linetype = SCEN))+
+  #scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff", "red"))+
+  scale_color_manual(values=c("#FF8000", "#a44a3f", "#a3b18a", "#0b090a", "red"))+
+  scale_linetype_manual(values=c("longdash", "longdash","longdash","longdash","solid"))+
+  geom_point(shape = 4, alpha = 0.1, size =0.1, color = "grey40")+
+    labs(x ="energy density [MWh/yha]",y="min <-- N_WT")+
+ theme_light()+
+  theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=18))
 
+C<-ggplot(tmp_dat, aes(x=CLUS, y=ENERDENS, group = SCEN)) + 
+geom_smooth(method=lm, se=FALSE, aes(color=SCEN, linetype = SCEN))+
+  #scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff", "red"))+
+  scale_color_manual(values=c("#FF8000", "#a44a3f", "#a3b18a", "#0b090a", "red"))+
+  scale_linetype_manual(values=c("longdash", "longdash","longdash","longdash","solid"))+
+  geom_point(shape = 4, alpha = 0.1, size =0.1, color = "grey40")+
+    labs(y ="min <-- Clark evans ind.", x = "energy density [MWh/yha] --> max")+
+ theme_light()+
+  theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=18))
+cur_dat<-Sys.Date()
 
-ggplot(tmp_dat, aes(x=CLUS, y=ENERDENS, group = POLICY)) + 
-  geom_smooth(method=lm, se=FALSE, aes(color=POLICY))+
-  scale_color_manual(values=c("#FF8000", "#0080ff", "#00994D", "#ff33ff"))+
-  geom_point(shape = 4, alpha = 0.1, size =0.1)+
-  #stat_cor(label.x = 0.4, label.y = 0.55)+
-  #stat_regline_equation(label.x = 0.4, label.y = 0.6)+
-  #facet_wrap(~POLICY)+
-  theme_light()+
-    labs(x ="min <-- Clark evans ind.", y = "energy density [MWh/yha] --> max")+
-  theme_light()+
-   theme(axis.text=element_text(size=13),
-        axis.title=element_text(size=15))
-
+plot_tmp<-ggarrange(A, B, C, ncol = 1,nrow = 3, common.legend = T) 
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/descriptives/",paste(cur_dat,"trade-off.jpg",sep=""),sep=""),width = 450, height = 1200)
+plot(plot_tmp)
+dev.off()
+#plot(plot_tmp)
 
 ```
 
