@@ -37,7 +37,8 @@ library(plot3D)
 ```{r}
 
 ###localhost
-pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ISOS.shp")
+cur_dat<-Sys.Date()
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ALL.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 #LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
@@ -75,26 +76,10 @@ imp_part<-subset(rob_pts,rob_pts$DIST_FOR<1)
 hist(imp_part$LT)
 ```
 
-```{r}
-#import the relative deltas 
-rel_delt<-read.csv("Y:/people/spreto/2001_WIND_OPTIM/differences_210115.csv",sep=",")
-rel_delt$GROUP<-as.factor(rel_delt$GROUP)
-
-a<-subset(rel_delt,rel_delt$Landscape=="CRF_only")
-ggplot(a, aes(x = SCEN, y = percent)) + 
-    geom_col() +
-
-    coord_flip()
-
-
-
-```
-
-
 #sCENARIO COMPARISON
 ```{r}
 tmpA<-rob_pts
-tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ALL.shp")
+tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/CRF.shp")
 tmpB<-tmpB[order(-tmpB$par_rob),]
 sum_prod = 0
 ind=0
@@ -123,12 +108,63 @@ joined<-subset(joined,joined$rob_parB3>0)
 joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
 joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
 
-ggplot(data = bound) +
+tmp_plot<-ggplot(data = bound) +
     geom_sf(fill=NA) +
     geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj, alpha=1.5))+
     scale_fill_gradientn(colours=c(low =  	"grey40" , high = "white"))+
     geom_sf(data = bound, fill = NA, color = "white")+
-    geom_sf(data = joined, color="red", alpha = .2, size=joined$diff2/2)+
+    geom_sf(data = joined, color="red", alpha = .2, size=joined$diff2)+
+    theme(panel.background = element_rect(fill = NA,
+                                colour = NA,
+                                size = 0.5, linetype = "solid"),
+        panel.grid.major = element_line(size = 0.5, linetype = 'dashed',
+                                colour = "grey70"),
+        panel.grid.minor = element_blank(),
+        # surpress legend
+        legend.position = "none",
+        axis.line=element_blank(),
+        axis.text.x=element_text(size=18),
+        axis.text.y=element_text(size=18),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/",paste(cur_dat,"FIG_8.jpg",sep="_"),sep=""),width = 450, height = 1200)
+plot(tmp_plot)
+dev.off()
+
+
+
+#### important locations in forests
+#tmpA = ALL, tmpB = FOR (or the other way round)
+#merge the two pts to compare
+joined<-st_join(rob_tmpB,tmpA)
+joined<-joined[,-c(40:78)]
+names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
+joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
+
+joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_FOR<1)
+joined<-subset(joined,joined$rob_parB3>0)
+sum(joined$prod_MW.x)
+
+
+####important pts in FFF
+#tmpA = ALL & tmp B = CRF
+joined<-st_join(rob_tmpB,tmpA)
+joined<-joined[,-c(40:78)]
+names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
+joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
+
+joined<-subset(joined,joined$rob_parB3>0 & joined$FFF==1)
+joined<-subset(joined,joined$rob_parB3>0)
+sum(joined$prod_MW.x)
+
+
+tmp_plot<-ggplot(data = bound) +
+    geom_sf(fill=NA) +
+    geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj, alpha=1.5))+
+    scale_fill_gradientn(colours=c(low =  	"grey40" , high = "white"))+
+    geom_sf(data = bound, fill = NA, color = "white")+
+    geom_sf(data = joined, color="red", alpha = .2, size=2)+
     theme(panel.background = element_rect(fill = NA,
                                 colour = NA,
                                 size = 0.5, linetype = "solid"),
@@ -144,49 +180,8 @@ ggplot(data = bound) +
         axis.title.x=element_blank(),
         axis.title.y=element_blank())
 
-
-#### important locations in forests
-#tmpA = ALL, tmpB = FOR (or the other way round)
-#merge the two pts to compare
-joined<-st_join(rob_tmpB,tmpA)
-joined<-joined[,-c(40:78)]
-names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
-joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
-
-joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_FOR<1)
-joined<-subset(joined,joined$rob_parB3>0)
-joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
-joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
-sum(joined$prod_MW.x)
-
-
-####important pts in FFF
-#tmpA = ALL & tmp B = CRF
-joined<-st_join(rob_tmpB,tmpA)
-joined<-joined[,-c(40:78)]
-names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
-joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
-
-joined<-subset(joined,joined$rob_parB3>0 & joined$FFF==1)
-joined<-subset(joined,joined$rob_parB3>0)
-joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
-joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
-sum(joined$prod_MW.x)
-
-
-####important pts in FFF
-#tmpA = ALL & tmp B = ISOS
-joined<-st_join(rob_tmpB,tmpA)
-joined<-joined[,-c(40:78)]
-names(joined)[names(joined) == "par_rob.y"] <- "rob_parB3"
-joined[c("rob_parB3")][is.na(joined[c("rob_parB3")])] <- 0
-
-joined<-subset(joined,joined$rob_parB3>0 & joined$DIST_ISOS.x<1000)
-joined<-subset(joined,joined$rob_parB3>0)
-joined$diff<-1/abs(joined$par_rob.x-joined$rob_parB3)
-joined$diff2<-1+((joined$diff-min(joined$diff))*9)/(max(joined$diff)-min(joined$diff))
-sum(joined$prod_MW.x)
-
-
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/",paste(cur_dat,"FIG_9b.jpg",sep="_"),sep=""),width = 450, height = 1200)
+plot(tmp_plot)
+dev.off()
 ```
 

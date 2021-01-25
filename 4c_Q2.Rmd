@@ -33,6 +33,7 @@ library(plot3D)
 
 ```{r}
 ###localhost
+cur_dat<-Sys.Date()
 pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/FOR.shp")
 bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
 LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
@@ -159,8 +160,10 @@ ggplot(data=LT_WT, aes(x=SCENARIO, y=N_WT, fill=LANDSCAPE_TYPE)) +
   scale_fill_grey() + 
   ylab("Number of WT")+
   theme_light()+
-  theme(axis.text.x=element_text(size=14),
-        axis.text.y=element_text(size=14))
+  theme(axis.text.x=element_text(size=16),
+        axis.text.y=element_text(size=16),
+        legend.position = "bottom",
+        legend.text = element_text(size =14))
  
 
 
@@ -174,9 +177,10 @@ ggplot(data=LT_WT, aes(x=SCENARIO, y=N_WT, fill=LANDSCAPE_TYPE)) +
 ```{r}
 pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/fitness_selection_210113.csv", sep=",")
 
-tmp_dat<-subset(pareto,pareto$GROUP == "A" | pareto$GROUP == "REF"| pareto$GROUP == "C")
+tmp_dat<-subset(pareto,pareto$SCEN == "REF"| pareto$SCEN == "FOR"| pareto$SCEN == "ISOS" | pareto$SCEN == "CRF")
 
-tmp_dat<-subset(pareto,pareto$GROUP == "B" | pareto$GROUP == "REF"| pareto$GROUP == "C")
+tmp_dat<-subset(pareto,pareto$GROUP == "B" | pareto$GROUP == "REF")
+tmp_dat<-subset(pareto,pareto$GROUP == "A" | pareto$GROUP == "REF")
 
 
 tmp_dat$SCEN<-as.factor(tmp_dat$SCEN)
@@ -193,7 +197,6 @@ A<-ggplot(tmp_dat, aes(x=N_WT, y=CLUS, group = SCEN)) +
   scale_color_manual(values=c("#FF8000", "#a44a3f", "#a3b18a", "#0b090a", "red"))+
   scale_linetype_manual(values=c("longdash", "longdash","longdash","longdash","solid"))+
   geom_point(shape = 4, alpha = 0.1, size =0.1, color = "grey40")+
-
   labs(x ="min <-- N_WT", y = "Clark evans ind. <-- min")+
   theme_light()+
   theme(axis.text=element_text(size=16),
@@ -209,7 +212,7 @@ geom_smooth(method=lm, se=FALSE, aes(color=SCEN, linetype = SCEN))+
   scale_color_manual(values=c("#FF8000", "#a44a3f", "#a3b18a", "#0b090a", "red"))+
   scale_linetype_manual(values=c("longdash", "longdash","longdash","longdash","solid"))+
   geom_point(shape = 4, alpha = 0.1, size =0.1, color = "grey40")+
-    labs(x ="energy density [MWh/yha]",y="min <-- N_WT")+
+    labs(x ="min <-- N_WT",y="energy density [MWh/yha]--> max")+
  theme_light()+
   theme(axis.text=element_text(size=16),
         axis.title=element_text(size=18))
@@ -227,9 +230,7 @@ geom_smooth(method=lm, se=FALSE, aes(color=SCEN, linetype = SCEN))+
 cur_dat<-Sys.Date()
 
 plot_tmp<-ggarrange(A, B, C, ncol = 1,nrow = 3, common.legend = T) 
-jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/descriptives/",paste(cur_dat,"trade-off.jpg",sep=""),sep=""),width = 450, height = 1200)
-plot(plot_tmp)
-dev.off()
+
 #plot(plot_tmp)
 
 ```
@@ -264,6 +265,9 @@ scatter3D_fancy <- function(x, y, z,..., colvar = colvar)
   scatter3D(x, y, z, ..., colvar = colvar, panel.first=panelfirst) 
 }
 
+
+
+jpeg(file=paste("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/",paste(cur_dat,"3D_single.jpg",sep="_"),sep=""),width = 1200, height = 1200)
 scatter3D_fancy(tmp_dat$N_WT, tmp_dat$CLUS, tmp_dat$ENERDENS,
           colvar = as.integer(tmp_dat$num),
           col = c("#FF8000", "#0080ff", "#00994D","#ff33ff"),
@@ -272,6 +276,13 @@ scatter3D_fancy(tmp_dat$N_WT, tmp_dat$CLUS, tmp_dat$ENERDENS,
           zlab = "max<--ENERDENS",
           theta = 25,d = 1, phi = 0, cex=0.3, bty = "b2",ticktype = "detailed",colkey = list(at = c(1,2, 3, 4), side = 1, 
           addlines = TRUE, length = 0.5, width = 0.5,
-          labels = c("B4", "B4_CRF-","B4_FOR-", "B4_ISOS-")))
-              
+          labels = as.vector(levels(tmp_dat$SCEN))))
+dev.off()
+   
+
+ theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=18),
+        legend.text = element_text(size=20),
+        legend.title = element_blank())
+           
 ```

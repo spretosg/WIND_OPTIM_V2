@@ -24,12 +24,12 @@ require(rstatix)
 require(reticulate)
 require(tidyr)
 require(maptools)
-require(RPostgres)
+require(ggpubr)
 require(stringr)
 library(onewaytests)
 library(psych)
 library(plot3D)
-library(coin)
+library (car)
 ```
 
 #Load the pareto data
@@ -42,7 +42,7 @@ pareto<-read.csv("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_ste
 groupA<-subset(pareto, pareto$SCEN=="FOR"|pareto$SCEN=="ISOS"|pareto$SCEN=="CRF"|pareto$SCEN=="REF")
 
 #B
-groupB<-subset(pareto, pareto$GROUP=="B"|pareto$SCEN=="REF")
+groupB<-subset(pareto, pareto$SCEN=="FOR_CRF"|pareto$SCEN=="ISOS_CRF"|pareto$SCEN=="FOR_ISOS"|pareto$SCEN=="REF")
 
 #C
 groupC<-subset(pareto, pareto$SCEN=="ALL"|pareto$SCEN=="REF")
@@ -61,7 +61,7 @@ ggplot(data=pareto, aes(x=ENERDENS, group=SCEN, fill=SCEN)) +
     geom_density(adjust=1.5)+ 
     facet_wrap(~SCEN) 
 #homogeneity of variance
-levene_test(tmp_dat,N_WT~SCEN,center = mean)
+leveneTest(groupB$ENERDENS,groupB$SCEN)
 ```
 
 ## and the appropriate test to compare the scenario means
@@ -69,26 +69,19 @@ levene_test(tmp_dat,N_WT~SCEN,center = mean)
 
 # if both not normal and inhomogeneity of variances == man whitney u test
 #make comparison group manual
-tmp_dat2<-subset(pareto,pareto$SCEN=="REF"|pareto$SCEN=="FOR")
+tmp_dat2<-subset(pareto,pareto$SCEN=="ALL"|pareto$SCEN=="ISOS_CRF")
 tmp_dat2$SCEN<-as.factor(tmp_dat2$SCEN)
 
 tmp_dat2 %>% 
-rstatix::wilcox_test(CLUS ~ SCEN) %>%
+rstatix::wilcox_test(N_WT ~ SCEN) %>%
 add_significance()
 
  tmp_dat2 %>% 
-wilcox_effsize(CLUS ~ SCEN)
+wilcox_effsize(N_WT ~ SCEN)
  
 
-tmp_dat2 %>% 
-rstatix::wilcox_test(ENERDENS ~ SCEN) %>%
-add_significance()
 
- tmp_dat2 %>% 
-wilcox_effsize(ENERDENS ~ SCEN)
- 
-
-#◘if normal distributed but homogen variances == welch t.test
+#if normal distributed but homogen variances == welch t.test
 w<-welch.test(N_WT~SCEN,tmp_dat2)
 paircomp(w)
 #if both given == t.test
