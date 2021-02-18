@@ -34,8 +34,8 @@ library(plot3D)
 ```{r}
 ###localhost
 cur_dat<-Sys.Date()
-pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/FOR.shp")
-bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
+pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/CRF.shp")
+bound<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/in/CH_Grenze.shp")
 LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
 
@@ -79,6 +79,9 @@ for(i in 1:nrow(pts)){
 }
 #create a subset to map  
 rob_pts<-pts[1:i,]
+
+# OR SOME OTHER PLOTS EG. 3.3
+rob_pts<-st_read("D:/04_PROJECTS/2021/2101_LANDQUAL/DISS/out/CRF_weighted_668.shp")
 ```
 
 
@@ -98,7 +101,7 @@ clarkevans(ppptmp, clipregion =  LT_owin)
 
 ALTI<-mean(rob_pts$ALTI)
 M_NDIST_HZ<-mean(rob_pts$DIST_HZ)
-M_NDIST_ROAD<-mean(rob_pts$weigh_stre)
+M_NDIST_ROAD<-mean(rob_pts$wgh_str)
 
 
 #here we can plot the 30 nearest neighbors and their average distances

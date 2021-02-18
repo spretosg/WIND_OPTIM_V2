@@ -39,7 +39,7 @@ library(plot3D)
 ###localhost
 cur_dat<-Sys.Date()
 pts<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/ALL.shp")
-bound<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/CH_Grenze.shp")
+bound<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/in/CH_Grenze.shp")
 #LT<-st_read("Y:/people/spreto/2001_WIND_OPTIM/in/LT3.shp")
 bound<-st_transform(bound,crs = "+init=epsg:21781") 
 dem<- raster("D:/04_PROJECTS/2001_WIND_OPTIM/in/dem_proj.tif")
@@ -79,7 +79,7 @@ hist(imp_part$LT)
 #sCENARIO COMPARISON
 ```{r}
 tmpA<-rob_pts
-tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/CRF.shp")
+tmpB<-st_read("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/4_wp/pts_sel_210112/REF.shp")
 tmpB<-tmpB[order(-tmpB$par_rob),]
 sum_prod = 0
 ind=0
@@ -113,7 +113,7 @@ tmp_plot<-ggplot(data = bound) +
     geom_raster(data = dem_df, aes(x = x, y = y, fill = dem_proj, alpha=1.5))+
     scale_fill_gradientn(colours=c(low =  	"grey40" , high = "white"))+
     geom_sf(data = bound, fill = NA, color = "white")+
-    geom_sf(data = joined, color="red", alpha = .2, size=joined$diff2)+
+    geom_sf(data = joined, color="red", alpha = .2, size=5)+
     theme(panel.background = element_rect(fill = NA,
                                 colour = NA,
                                 size = 0.5, linetype = "solid"),

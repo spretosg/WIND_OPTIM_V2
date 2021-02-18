@@ -31,7 +31,36 @@ library(onewaytests)
 library(psych)
 library(plot3D)
 library(pwr)
+library(rasterVis)
+library(RColorBrewer)
 ```
+
+# raster for the appendix
+```{r}
+#install.packages("rasterVis")
+# Create list of NDVI file paths
+rasterPath <- list.files("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/1_wp/pot_ener_CH", full.names = TRUE, pattern = ".tif$")
+rasterNames<- list.files("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/1_wp/pot_ener_CH", full.names = FALSE, pattern = ".tif$")
+rasterNames<- gsub(".tif","",rasterNames)
+
+# Create a time series raster stack
+raster_stack <- stack(rasterPath)
+
+# apply scale factor
+
+levelplot(raster_stack,
+          main="Electricity production",
+          layout = c(3,1),
+           names.attr=rasterNames,
+          scales=list(draw=FALSE ))
+
+
+airdens<-raster("D:/04_PROJECTS/2001_WIND_OPTIM/WIND_OPTIM_git/intermediate_steps/1_wp/200_airdens.gri")
+levelplot(airdens,
+          main="Air density",
+          scales=list(draw=FALSE ))
+```
+
 
 #Load the pareto data
 ```{r}
